@@ -1,0 +1,45 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #111417;
+  color: #e7edf2;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+.status {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 18px;
+  background: #1b2025;
+  border-bottom: 1px solid #262d34;
+  color: #8b9aa8;
+}
+
+.status[data-connected="true"] {
+  color: #6fcd8f;
+}
+
+#terminal {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 6px 0 0 8px;
+}
+
+#terminal .xterm {
+  height: 100%;
+}

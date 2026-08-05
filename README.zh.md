@@ -1,0 +1,125 @@
+<!-- README.zh.md is the Chinese counterpart of README.md -->
+# EzTerm
+
+<p align="center">
+  <strong>面向 AI 代理的交互式终端会话工具</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.25+-00ADD8.svg" alt="Go 1.25+">
+  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="macOS / Linux / Windows">
+  <img src="https://img.shields.io/badge/Skill-agentskills.io-blue.svg" alt="Skill">
+  <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License">
+</p>
+
+<p align="center">
+  <a href="./README.md"><img src="https://img.shields.io/badge/EN-English-blue.svg" alt="English"></a>
+</p>
+
+<p align="center">
+  <a href="./README.md">English</a> | <strong>中文</strong>
+</p>
+
+---
+
+`ezterm` 是一个轻量 CLI + daemon，让 AI 代理（以及人类）能够**多轮运行、驱动和监控交互式终端会话**——REPL、shell、安装器、服务器、远程 SSH 等场景，支持跨多轮的发送输入与读取输出。
+
+## 快速开始
+
+```bash
+# 构建单一二进制（CLI 与 daemon 合一）。
+go build -o ezterm .
+
+# 首次命令会自动在后台拉起 daemon（默认端口 18766，数据目录 ~/.ezterm）。
+./ezterm start --command python3 --name repl
+./ezterm start --name dev --mode pty --web
+./ezterm send <id> --text '2 + 2' --press-enter
+./ezterm read <id> --timeout 30
+
+./ezterm terminate <id>
+./ezterm delete <id>
+```
+
+## 特性
+
+- **交互式会话** — 以 PTY 或管道模式启动进程，跨多轮发送输入、阻塞或非阻塞读取输出。
+- **自动拉起 daemon** — 后台服务在首次使用时启动，同时提供 `ezterm daemon` 子命令。
+- **SSH profile** — 通过命名配置（密码或私钥认证）建立远端交互或一次性会话。
+- **稳定的 `--json` 输出** — 面向 Skill/工具的可解析输出。
+- **多游标输出缓冲** — 每个 reader 独立游标、保留历史、可设上限的阻塞读取。
+- **持久化** — 数据目录保存 `sessions.json` 与会话消息日志；重启后历史会话恢复为已结束记录。
+- **跨平台** — Unix 使用 `creack/pty`，Windows 使用 ConPTY；管道模式全平台可用。
+- **共享终端 attach** — `attach <id>` 以 raw mode 进入会话的实时 PTY 画面（类似 `tmux attach`）：按键与窗口尺寸自动转发，输出实时流回，`Ctrl+]` 脱离而不终止会话。
+- **精确按键输入** — `send --press-key` 发送单个标准终端按键或组合键（如 `ctrl+c`、`enter`、`ctrl+shift+up`、`f5`），不追加换行；PTY 与 pipe 会话均可使用。
+- **本机 Web 终端** — `start --web` 为显式开启的 PTY 会话提供 xterm.js 浏览器画面，通过 WebSocket 实时传输输出、输入、粘贴和尺寸；daemon 默认只监听本机。
+
+## 命令行
+
+```
+ezterm [全局参数] <命令> [参数]
+```
+
+| 命令 | 说明 |
+|---|---|
+| `start` | 启动会话：`--command`、`--args`、`--mode pty\|pipe`、`--name`、`--rows`、`--cols`、`--ssh-config`、`--web` |
+| `send <id>` | 发送输入：`--text`、`--press-enter`，或用 `--press-key` 发送单个按键/组合键（如 `ctrl+c`、`enter`、`f5`） |
+| `read <id>` | 读取新输出：`--reader`、`--timeout <秒>`、`--raw`、`--max-bytes` |
+| `attach <id>` | 以 raw mode 进入运行中的 PTY 会话；`Ctrl+]` 脱离 |
+| `terminate <id>` | 停止会话（先优雅后强制） |
+| `delete <id>` | 删除已结束的会话 |
+| `list` | 列出会话 |
+| `ssh-config init\|list` | 创建 / 列出 SSH profile |
+| `health` | 探测 daemon |
+| `daemon` | 前台运行 daemon |
+| `version` | 打印版本 |
+
+全局参数（命令前后均可）：`--port`（18766）、`--data-dir`（`~/.ezterm`）、`--json`、`--log-level`。
+
+**退出码：** `0` 成功 · `1` 会话不存在 · `2` 其他错误。
+
+完整示例、SSH profile 与 Skill 工作流见 [`SKILL.md`](./SKILL.md)。
+
+### 示例
+
+```bash
+# 本地交互 PTY shell，以及一次性管道命令。
+ezterm start --name dev --mode pty
+ezterm start --command df --args -h --mode pipe
+
+# 在自己的终端接管正在运行的 shell（Ctrl+] 脱离）。
+ezterm attach <id>
+
+# 发送单个终端按键，不追加换行。
+ezterm send <id> --press-key ctrl+c
+# 其他示例：ctrl+shift+up、left、enter、f5
+
+# 启动 PTY 并开启本机浏览器终端，访问命令打印的 URL。
+ezterm start --name web-dev --mode pty --web
+
+# 通过 profile 连接 SSH。
+ezterm ssh-config init prod --host db.example.com --user deploy --auth key --key-path ~/.ssh/id_ed25519
+ezterm start --ssh-config prod --name db-shell
+
+# 机器可读输出。
+ezterm --json list
+ezterm --json read <id> --timeout 0
+```
+
+## Agent Skill
+
+项目附带一个符合 [agentskills.io](https://agentskills.io) 规范的 Skill：
+[`SKILL.md`](./SKILL.md)（适用于 pi、Claude Code 等支持 SKILL.md 的工具）。将仓库根目录作为 skill 路径传给工具即可让代理通过 CLI 启动/发送/读取/终止会话。
+
+## HTTP API
+
+daemon 提供小型 JSON API（`/health`、`/api/sessions`、`/api/sessions/{id}/output`、`/api/ssh-configs` 等），以及按需开启的 Web 终端页面和 WebSocket：`/web/{id}`、`/web/{id}/ws`。详见 [`API.md`](./API.md)（中文版 [`API.zh.md`](./API.zh.md)）。
+
+## 项目结构与规范
+
+- [`FileTree.md`](./FileTree.md)（中文 [`FileTree.zh.md`](./FileTree.zh.md)）— 目录结构说明。
+- [`Standards.md`](./Standards.md)（中文 [`Standards.zh.md`](./Standards.zh.md)）— 开发规范。
+- [`API.md`](./API.md) — HTTP API 参考。
+
+## License
+
+MIT — 见 [`LICENSE`](./LICENSE)。

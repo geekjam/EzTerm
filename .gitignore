@@ -1,0 +1,29 @@
+# Binaries
+/ezterm
+/ezterm.exe
+/eztermd
+/eztermd.exe
+*.exe~
+
+# Data & runtime state
+/data/
+*.log
+.ezterm/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# AI WorkFlow
+.ai/
