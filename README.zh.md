@@ -132,7 +132,14 @@ ezterm --json read <id> --timeout 0
 ## Agent Skill
 
 项目附带一个符合 [agentskills.io](https://agentskills.io) 规范的 Skill：
-[`SKILL.md`](./SKILL.md)（适用于 pi、Claude Code 等支持 SKILL.md 的工具）。将仓库根目录作为 skill 路径传给工具即可让代理通过 CLI 启动/发送/读取/终止会话。
+[`SKILL.md`](./SKILL.md)（适用于 pi、Claude Code 等支持 SKILL.md 的工具）。
+
+**推荐安装方式**：将整个仓库目录复制到你的工具的 skills 目录中，使该 Skill 自带完整依赖，且编译好的 [`ezterm.exe`](./ezterm.exe) 与 `SKILL.md` 相邻、便于检索：
+
+```bash
+# 以 pi 为例：复制到用户的 skills 目录
+cp -r ./EzTerm ~/.pi/agent/skills/EzTerm
+```
 
 ## HTTP API
 

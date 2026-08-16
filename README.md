@@ -161,8 +161,17 @@ ezterm --json read <id> --timeout 0
 
 For agents, `ezterm` ships an [agentskills.io](https://agentskills.io)-compatible
 skill in [`SKILL.md`](./SKILL.md) (usable by pi, Claude Code, and other
-SKILL.md-aware tools). Point your tool at the repository root, then agents can
-start/send/read/terminate sessions using the CLI.
+SKILL.md-aware tools).
+
+**Recommended install:** copy the whole repository directory into your tool's
+skills directory so the skill is self-contained and the compiled
+[`ezterm.exe`](./ezterm.exe) sits right next to `SKILL.md` for easy retrieval:
+
+```bash
+# Example (pi): copy into your user skills directory
+cp -r ./EzTerm ~/.pi/agent/skills/EzTerm
+```
+
 
 ## HTTP API
 
