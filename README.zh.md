@@ -22,7 +22,9 @@
 
 ---
 
-`ezterm` 是一个轻量 CLI + daemon，让 AI 代理（以及人类）能够**多轮运行、驱动和监控交互式终端会话**——REPL、shell、安装器、服务器、远程 SSH 等场景，支持跨多轮的发送输入与读取输出。
+`ezterm` 是一个 **CLI + Skill** 项目：一个轻量级命令行工具（CLI + daemon）配一套现成可用的 Agent Skill。二者结合，让 AI 代理（以及人类）能够**多轮运行、驱动和监控交互式终端会话**——REPL、shell、安装器、服务器、远程 SSH 等场景，支持跨多轮的发送输入与读取输出。
+
+CLI 负责实际的会话管理；Skill 封装该 CLI，使支持 SKILL.md 的工具（pi、Claude Code 等）开箱即用。详见 [Agent Skill](#agent-skill) 一节。
 
 ## 致谢 termcp
 

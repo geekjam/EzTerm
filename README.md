@@ -21,9 +21,15 @@
 
 ---
 
-`ezterm` is a small CLI + daemon that lets AI agents (and humans) run, drive,
-and monitor **interactive terminal sessions** — REPLs, shells, installers,
-servers, and remote SSH — across many turns of send-and-read.
+`ezterm` is a **CLI + Skill** project: a small command-line tool (CLI +
+daemon) bundled with a ready-made agent Skill. Together they let AI agents (and
+humans) run, drive, and monitor **interactive terminal sessions** — REPLs,
+shells, installers, servers, and remote SSH — across many turns of
+send-and-read.
+
+The CLI handles the actual session management; the Skill wraps that CLI so
+SKILL.md-aware tools (pi, Claude Code, and others) can use it out of the box.
+See the [Agent Skill](#agent-skill) section.
 
 ## Thanks to termcp
 
