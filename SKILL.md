@@ -98,29 +98,6 @@ ezterm terminate a1b2c3d45678
 ezterm delete a1b2c3d45678
 ```
 
-## Attach Workflow
-
-Use `attach` when a human or agent needs a real terminal view of a running PTY
-session. It replays the retained ANSI screen, then follows live output. Input
-is forwarded byte-for-byte, including Ctrl+C, function keys, Tab, and paste.
-`Ctrl+]` detaches and leaves the session running; process exit closes the
-attach stream and restores the local terminal.
-
-```bash
-# Start a PTY session and capture its generated ID.
-ezterm config local --name dev --mode pty
-ezterm start --name dev
-
-# In another terminal, connect to the same session.
-ezterm attach <id>
-
-# Resize follows the local terminal automatically. To detach, press Ctrl+].
-# The session remains available for another attach client.
-```
-
-Attach is supported only for PTY sessions. `--json` is not supported because
-attach is an interactive raw-terminal command.
-
 ## Web configuration page
 
 Use `config web` when a human needs to manage saved local and SSH launch
