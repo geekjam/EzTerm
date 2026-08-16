@@ -165,7 +165,7 @@ SKILL.md-aware tools).
 
 **Recommended install:** copy the whole repository directory into your tool's
 skills directory so the skill is self-contained and the compiled
-[`ezterm.exe`](./ezterm.exe) sits right next to `SKILL.md` for easy retrieval:
+`ezterm (In Windows: ezterm.exe)` sits right next to `SKILL.md` for easy retrieval:
 
 ```bash
 # Example (pi): copy into your user skills directory

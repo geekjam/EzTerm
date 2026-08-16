@@ -134,7 +134,7 @@ ezterm --json read <id> --timeout 0
 项目附带一个符合 [agentskills.io](https://agentskills.io) 规范的 Skill：
 [`SKILL.md`](./SKILL.md)（适用于 pi、Claude Code 等支持 SKILL.md 的工具）。
 
-**推荐安装方式**：将整个仓库目录复制到你的工具的 skills 目录中，使该 Skill 自带完整依赖，且编译好的 [`ezterm.exe`](./ezterm.exe) 与 `SKILL.md` 相邻、便于检索：
+**推荐安装方式**：将整个仓库目录复制到你的工具的 skills 目录中，使该 Skill 自带完整依赖，且编译好的 `ezterm (Windows下: ezterm.exe)` 与 `SKILL.md` 相邻、便于检索：
 
 ```bash
 # 以 pi 为例：复制到用户的 skills 目录
