@@ -112,3 +112,38 @@ type ConfigSummary struct {
 	AuthMethod   string `json:"auth_method,omitempty"`
 	DefaultShell string `json:"default_shell,omitempty"`
 }
+
+// ConfigDetail is the full, non-secret representation of a single launch
+// config, including fields the list summary omits (such as a local config's
+// args). The stored SSH password is never included in this wire type.
+type ConfigDetail struct {
+	Name       string   `json:"name"`
+	Type       string   `json:"type"`
+	Command    string   `json:"command,omitempty"`
+	Args       []string `json:"args,omitempty"`
+	Mode       string   `json:"mode,omitempty"`
+	Host       string   `json:"host,omitempty"`
+	Port       int      `json:"port,omitempty"`
+	User       string   `json:"user,omitempty"`
+	AuthMethod string   `json:"auth_method,omitempty"`
+	KeyPath    string   `json:"key_path,omitempty"`
+	Shell      string   `json:"shell,omitempty"`
+}
+
+// ConfigUpsertRequest is the request body for POST /api/configs/{name}.
+// Type discriminates a local from an ssh config. Password is write-only: an
+// empty password on an existing password-auth SSH config preserves the stored
+// value (used when the Web page edits a config without re-typing the secret).
+type ConfigUpsertRequest struct {
+	Type       string   `json:"type"`
+	Command    string   `json:"command,omitempty"`
+	Args       []string `json:"args,omitempty"`
+	Mode       string   `json:"mode,omitempty"`
+	Host       string   `json:"host,omitempty"`
+	Port       int      `json:"port,omitempty"`
+	User       string   `json:"user,omitempty"`
+	AuthMethod string   `json:"auth_method,omitempty"`
+	Password   string   `json:"password,omitempty"`
+	KeyPath    string   `json:"key_path,omitempty"`
+	Shell      string   `json:"shell,omitempty"`
+}

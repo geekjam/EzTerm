@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"ezterm/internal/api"
 	"ezterm/internal/configstore"
 	"ezterm/internal/session"
+	"ezterm/internal/sshconfig"
 )
 
 // maxBodyBytes caps request bodies to protect the daemon.
@@ -53,10 +55,16 @@ func NewHandlerWithAddress(mgr *session.Manager, cfgStore *configstore.Store, ho
 	h.mux.HandleFunc("DELETE /api/sessions/{id}", h.handleDelete)
 	h.mux.HandleFunc("POST /api/sessions/{id}/resize", h.handleResize)
 	h.mux.HandleFunc("GET /api/configs", h.handleListConfigs)
+	h.mux.HandleFunc("GET /api/configs/{name}", h.handleGetConfig)
+	h.mux.HandleFunc("POST /api/configs/{name}", h.handleUpsertConfig)
+	h.mux.HandleFunc("DELETE /api/configs/{name}", h.handleDeleteConfig)
 	h.mux.HandleFunc("GET /web/{id}", h.handleWebPage)
 	h.mux.HandleFunc("GET /web/app.js", h.handleWebApp)
 	h.mux.HandleFunc("GET /web/style.css", h.handleWebStyle)
 	h.mux.HandleFunc("GET /web/{id}/ws", h.handleWebSocket)
+	h.mux.HandleFunc("GET /config", h.handleConfigPage)
+	h.mux.HandleFunc("GET /config/app.js", h.handleConfigApp)
+	h.mux.HandleFunc("GET /config/style.css", h.handleConfigStyle)
 
 	return h
 }
@@ -325,6 +333,170 @@ func (h *Handler) handleListConfigs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"configs": configs})
+}
+
+func (h *Handler) handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	detail, err := h.getConfigDetail(name)
+	if err != nil {
+		writeConfigStoreError(w, "get config", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func (h *Handler) handleUpsertConfig(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var req api.ConfigUpsertRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+
+	typeName := strings.ToLower(strings.TrimSpace(req.Type))
+	if typeName != string(configstore.TypeLocal) && typeName != string(configstore.TypeSSH) {
+		writeError(w, http.StatusBadRequest, "type must be %q or %q", configstore.TypeLocal, configstore.TypeSSH)
+		return
+	}
+
+	existingType, exists, err := h.configType(name)
+	if err != nil {
+		writeConfigStoreError(w, "check config", err)
+		return
+	}
+	requestedType := configstore.Type(typeName)
+	if exists && existingType != requestedType {
+		writeError(w, http.StatusConflict, "config %q already exists as a %s config", name, existingType)
+		return
+	}
+
+	switch requestedType {
+	case configstore.TypeLocal:
+		cfg := &configstore.LocalConfig{
+			Command: req.Command,
+			Args:    append([]string(nil), req.Args...),
+			Mode:    api.Mode(req.Mode),
+		}
+		if cfg.Mode == api.ModePipe && strings.TrimSpace(cfg.Command) == "" {
+			writeError(w, http.StatusBadRequest, "command is required for a pipe config")
+			return
+		}
+		if err := h.cfgStore.SaveLocal(name, cfg); err != nil {
+			writeConfigStoreError(w, "save local config", err)
+			return
+		}
+	case configstore.TypeSSH:
+		profile := &sshconfig.Profile{
+			Host:         req.Host,
+			Port:         req.Port,
+			User:         req.User,
+			AuthMethod:   sshconfig.AuthMethod(strings.TrimSpace(req.AuthMethod)),
+			Password:     req.Password,
+			KeyPath:      req.KeyPath,
+			DefaultShell: req.Shell,
+		}
+		if err := profile.Validate(); err != nil {
+			writeConfigStoreError(w, "validate SSH config", err)
+			return
+		}
+		if profile.AuthMethod == sshconfig.AuthPassword {
+			if strings.TrimSpace(profile.Password) == "" && exists {
+				previous, getErr := h.cfgStore.GetSSH(name)
+				if getErr != nil {
+					writeConfigStoreError(w, "read existing SSH config", getErr)
+					return
+				}
+				if previous.AuthMethod == sshconfig.AuthPassword {
+					profile.Password = previous.Password
+				}
+			}
+			if strings.TrimSpace(profile.Password) == "" {
+				writeError(w, http.StatusBadRequest, "password is required for password authentication (leave it blank only when retaining an existing password)")
+				return
+			}
+		} else {
+			// A key-auth update must not retain an old password in the stored
+			// profile or accidentally expose two authentication methods.
+			profile.Password = ""
+		}
+		if err := h.cfgStore.SaveSSH(name, profile); err != nil {
+			writeConfigStoreError(w, "save SSH config", err)
+			return
+		}
+	}
+
+	detail, err := h.getConfigDetail(name)
+	if err != nil {
+		writeConfigStoreError(w, "read saved config", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func (h *Handler) handleDeleteConfig(w http.ResponseWriter, r *http.Request) {
+	if err := h.cfgStore.Delete(r.PathValue("name")); err != nil {
+		writeConfigStoreError(w, "delete config", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// configType finds the type currently using name. It is used before an upsert
+// so a request cannot accidentally turn a same-named local config into SSH (or
+// vice versa), preserving configstore's global name uniqueness rule.
+func (h *Handler) configType(name string) (configstore.Type, bool, error) {
+	if _, err := h.cfgStore.GetLocal(name); err == nil {
+		return configstore.TypeLocal, true, nil
+	} else if !errors.Is(err, configstore.ErrNotFound) {
+		return "", false, err
+	}
+	if _, err := h.cfgStore.GetSSH(name); err == nil {
+		return configstore.TypeSSH, true, nil
+	} else if !errors.Is(err, configstore.ErrNotFound) {
+		return "", false, err
+	}
+	return "", false, nil
+}
+
+func (h *Handler) getConfigDetail(name string) (api.ConfigDetail, error) {
+	if cfg, err := h.cfgStore.GetLocal(name); err == nil {
+		return api.ConfigDetail{
+			Name:    name,
+			Type:    string(configstore.TypeLocal),
+			Command: cfg.Command,
+			Args:    append([]string(nil), cfg.Args...),
+			Mode:    string(cfg.Mode),
+		}, nil
+	} else if !errors.Is(err, configstore.ErrNotFound) {
+		return api.ConfigDetail{}, err
+	}
+
+	profile, err := h.cfgStore.GetSSH(name)
+	if err != nil {
+		return api.ConfigDetail{}, err
+	}
+	return api.ConfigDetail{
+		Name:       name,
+		Type:       string(configstore.TypeSSH),
+		Host:       profile.Host,
+		Port:       profile.Port,
+		User:       profile.User,
+		AuthMethod: string(profile.AuthMethod),
+		KeyPath:    profile.KeyPath,
+		Shell:      profile.DefaultShell,
+	}, nil
+}
+
+func writeConfigStoreError(w http.ResponseWriter, action string, err error) {
+	status := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, configstore.ErrInvalid):
+		status = http.StatusBadRequest
+	case errors.Is(err, configstore.ErrNotFound):
+		status = http.StatusNotFound
+	case errors.Is(err, configstore.ErrExists):
+		status = http.StatusConflict
+	}
+	writeError(w, status, "%s: %v", action, err)
 }
 
 // --- helpers for query parsing ---

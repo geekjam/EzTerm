@@ -22,6 +22,12 @@ var (
 	webAppJS []byte
 	//go:embed web/style.css
 	webStyleCSS []byte
+	//go:embed web/config.html
+	webConfigHTML []byte
+	//go:embed web/config.js
+	webConfigJS []byte
+	//go:embed web/config.css
+	webConfigCSS []byte
 )
 
 // webResizeMessage is the text-frame protocol sent by the browser when its
@@ -74,6 +80,24 @@ func (h *Handler) handleWebStyle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	_, _ = w.Write(webStyleCSS)
+}
+
+func (h *Handler) handleConfigPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(webConfigHTML)
+}
+
+func (h *Handler) handleConfigApp(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	_, _ = w.Write(webConfigJS)
+}
+
+func (h *Handler) handleConfigStyle(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	_, _ = w.Write(webConfigCSS)
 }
 
 // handleWebSocket bridges one browser WebSocket to the session's shared PTY

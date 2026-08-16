@@ -57,6 +57,7 @@ Global flags (can appear before or after the subcommand):
 | `ezterm config ssh --name <name> --host <host> --user <u> --auth password --password <p> [--port 22] [--shell <s>]` or `... --auth key --key-path <path>` | Create/update an SSH launch config; choose exactly one auth mode and provide its credential parameter. |
 | `ezterm config list [--type local\|ssh]` | List saved configs. |
 | `ezterm config delete --name <name>` | Delete a saved config by name. |
+| `ezterm config web [--open]` | Ensure the daemon is running and print the dark config page URL; `--open` launches the default browser. |
 | `ezterm health` / `ezterm version` | Probe the daemon / print version. |
 
 Exit codes: `0` success, `1` session not found, `2` other errors (daemon
@@ -71,7 +72,12 @@ ezterm config local --name dev --command bash --mode pty
 ezterm start --name dev --web
 # → session a1b2c3d45678 created
 #   web terminal: http://127.0.0.1:18766/web/a1b2c3d45678
-# You must provide users with the URL of the web terminal is launching.
+
+# Optional: manage saved configs in the browser.
+ezterm config web --open
+# → configuration page: http://127.0.0.1:18766/config
+# The page supports local/SSH create, edit, and delete. Stored SSH passwords
+# are write-only and are never returned to the browser.
 
 # 2. Send a command.
 ezterm send a1b2c3d45678 --text 'python -i' --press-enter
@@ -112,6 +118,28 @@ ezterm attach <id>
 
 Attach is supported only for PTY sessions. `--json` is not supported because
 attach is an interactive raw-terminal command.
+
+## Web configuration page
+
+Use `config web` when a human needs to manage saved local and SSH launch
+configs without typing the full CLI form. It ensures the daemon is running and
+prints a dark-themed browser page consistent with the Web terminal:
+
+```bash
+ezterm config web --open
+# → configuration page: http://127.0.0.1:18766/config
+```
+
+The page supports list/create/edit/delete through `/api/configs`. SSH passwords
+are write-only: existing passwords appear only as a masked placeholder, are
+never returned by `GET /api/configs/{name}`, and remain in the mode-0600 config
+store. Leaving the password field empty while editing a password-auth profile
+preserves the existing password.
+
+The page has the same access boundary as the daemon and Web terminal: by
+default it is local-only on `127.0.0.1`, with no authentication. Do not expose
+the daemon with `--host` on an untrusted network because that also exposes
+configuration CRUD and the ability to write SSH credentials.
 
 ## Web terminal
 
@@ -187,39 +215,15 @@ ezterm send <id> --press-key left               # arrow key
   undefined combinations (`ctrl+1`, `shift+1`) print a clear error and exit
   with code 2.
 
-## Saved local and SSH configs
-
-Create a config once, then start sessions by config name. Config names are
-unique across local and SSH types:
-
-```bash
-# Local interactive shell.
-ezterm config local --name dev --command bash --mode pty
-ezterm start --name dev --web
-
-# One-shot local command.
-ezterm config local --name disk --command df --args -h --mode pipe
-ezterm start --name disk
-
-# Remote SSH shell.
-ezterm config ssh --name prod --host db.example.com --user deploy --auth key --key-path ~/.ssh/id_ed25519
-# Credentials are finalized out-of-band by the user in the stored config;
-# do not read or edit files under ~/.ezterm/configs/ (see Credential safety).
-ezterm start --name prod
-
-ezterm config list
-```
-
-Sessions use the profile's credentials (password or private key); private keys
-are never embedded in the repository or config template.
-
 ## Credential safety — read this before using SSH
 
 The default data directory `~/.ezterm` (or any custom `--data-dir`) contains
 **sensitive material**: SSH configs with **plaintext passwords** and private
 key paths (`configs/ssh.json`, mode 0600), session transcripts
 that may include password prompts and typed secrets (`messages/`), and a daemon
-log. Treat every file there as a secret.
+log. The web config page never returns stored passwords, but anyone who can
+reach an exposed daemon can modify configurations. Treat every file there as a
+secret.
 
 **Never** do any of the following:
 
@@ -243,10 +247,12 @@ Instead:
   never raw file reads.
 - Reference configs by **name only**: `ezterm start --name prod`.
   The daemon loads SSH credentials itself.
-- To create or fix a config's credentials, ask the user to run
-  `ezterm config ssh --name prod ...`; do not read the config file afterward.
-- `config ssh --password` takes a password on the command line; prefer it
-  only when the user supplied the value, and never echo it later.
+- To create or fix a config, open the web configuration page with
+  `ezterm config web --open` and have the user enter credentials there in the
+  browser; this keeps passwords off the command line and out of transcripts.
+  Do not read the config file afterward. Never pass a password through
+  `config ssh --password ...` yourself unless the user explicitly supplied it,
+  and never echo it later.
 
 ## JSON output
 

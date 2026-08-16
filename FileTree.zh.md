@@ -53,16 +53,20 @@ internal/
 │   ├── spawn.go                  # auto-spawn daemon（探测 /health → 后台拉起）
 │   ├── spawn_{windows,unix}.go   # 平台相关后台进程分离
 │   ├── env.go                    # ~/.ezterm 与 ~ 展开
-│   └── config_cmd.go             # config local/ssh/list/delete 本地管理
+│   ├── config_cmd.go             # config local/ssh/list/delete 本地管理
+│   ├── config_web.go             # config web：确保 daemon 并打印/打开配置页
+│   ├── open_linux.go             # Linux 默认浏览器启动
+│   ├── open_unix.go              # macOS/BSD 默认浏览器启动
+│   └── open_windows.go           # Windows 默认浏览器启动
 ├── config/
 │   └── config.go                 # 配置默认值、校验、~ 展开
 ├── configstore/
 │   └── store.go                  # 统一 local/ssh 配置存储（configs/local.json + ssh.json）
 ├── daemon/
 │   ├── daemon.go                 # HTTP 服务器、flag、优雅关闭
-│   ├── handlers.go               # REST/JSON handler、查询参数解析、attach 流
-│   ├── web.go                    # 内嵌 Web 终端页面 + WebSocket 桥接
-│   └── web/                      # xterm.js 页面资源（经 go:embed 内嵌）
+│   ├── handlers.go               # REST/JSON handler、配置 CRUD、attach 流
+│   ├── web.go                    # 内嵌 Web 终端/配置页面 + WebSocket 桥接
+│   └── web/                      # xterm.js 终端 + 深色配置页资源（go:embed）
 ├── message/
 │   └── message.go                # 每会话消息索引 + 内容文件持久化
 ├── session/
@@ -88,6 +92,8 @@ internal/
 attach 流程：CLI `attach` 命令打开 `GET /api/sessions/{id}/attach`（daemon 流式推送原始 PTY 字节流，先重放保留画面），按键通过 `POST /api/sessions/{id}/input`（`press_enter=false`）转发，窗口尺寸变化通过 `POST /api/sessions/{id}/resize` 同步；`Ctrl+]` 本地脱离而不终止会话。
 
 Web 终端（`start --web`）复用同一套 attach 原语（输出用 `AttachReader`/`ReadOutput`，输入用 `SendInput`/`Resize`），经 `/web/{id}/ws` 的 WebSocket 连接，因此浏览器标签页与 `attach` 客户端共享同一 PTY 画面。仅对使用 `--web` 启动且为 PTY 模式的会话开启。
+
+`/config` 配置页面与终端页面一起内嵌，使用 `/api/configs` CRUD 端点，支持匹配深色主题的 local/SSH 配置管理。SSH 密码可用于写入，但不会出现在任何响应中。`config web [--open]` 会确保 daemon 运行并打印（或打开）页面 URL。页面与 API 继承 daemon 的绑定地址且无认证，因此默认仅绑定本机非常重要。
 
 ---
 

@@ -218,6 +218,58 @@ List launch config summaries (non-secret fields) for both local and SSH configs.
 ]}
 ```
 
+### `GET /api/configs/{name}`
+
+Get one config's full non-secret detail (a local config includes its `args`;
+SSH configs never include the stored password). Returns `404` if unknown.
+
+```json
+{"name": "dev", "type": "local", "command": "bash", "args": ["-l"], "mode": "pty"}
+
+{"name": "prod", "type": "ssh", "host": "db.example.com", "port": 22,
+ "user": "deploy", "auth_method": "password", "key_path": "", "shell": ""}
+```
+
+### `POST /api/configs/{name}`
+
+Create or update a config. The body's `type` (`local` or `ssh`) decides which
+store is written. Saving over an existing config of the same type overwrites
+it; reusing a name owned by the other type returns `409`. A local pipe config
+requires a non-empty `command`.
+
+```json
+{"type": "local", "command": "bash", "args": ["-l"], "mode": "pty"}
+
+{"type": "ssh", "host": "db.example.com", "port": 22, "user": "deploy",
+ "auth_method": "password", "password": "...", "key_path": "", "shell": "/bin/bash"}
+```
+
+The SSH `password` is **write-only**: it is never returned by any endpoint. On
+an update to an existing password-auth SSH config, leaving `password` empty
+preserves the stored value. A new password-auth config with no password, or a
+key-auth config with no `key_path`, returns `400`. Config names match
+`[A-Za-z0-9_-]+`.
+
+| Condition | Response |
+|---|---|
+| success (create or update) | `200` with the saved `ConfigDetail` |
+| missing `command` for a local pipe config | `400` |
+| cross-type name already in use | `409` |
+| invalid type, missing SSH credential | `400` |
+
+### `DELETE /api/configs/{name}`
+
+Delete a config by name (either type). Returns `204`; `404` if unknown.
+
+### `GET /config`
+
+The embedded, dark-themed web configuration page. It lists configs and uses
+the endpoints above to create, edit, and delete local and SSH configs, served
+from the same binary (no build step; `config.js` and `config.css` are at
+`/config/app.js` and `/config/style.css`). Like the Web terminal and all `/api/*`
+routes, it is reachable only on the daemon bind address (default `127.0.0.1`)
+and has no authentication. Closing the page does not affect running sessions.
+
 ## Session Lifecycle
 
 ```

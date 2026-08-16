@@ -53,16 +53,20 @@ internal/
 │   ├── spawn.go                  # Auto-spawn daemon (probe /health → background launch)
 │   ├── spawn_{windows,unix}.go   # Platform-specific process detachment
 │   ├── env.go                    # ~/.ezterm resolution and ~ expansion
-│   └── config_cmd.go             # config local/ssh/list/delete local management
+│   ├── config_cmd.go             # config local/ssh/list/delete local management
+│   ├── config_web.go             # config web: ensure daemon and print/open config page
+│   ├── open_linux.go             # Linux default-browser launcher
+│   ├── open_unix.go              # macOS/BSD default-browser launcher
+│   └── open_windows.go           # Windows default-browser launcher
 ├── config/
 │   └── config.go                 # Defaults, validation, ~ expansion
 ├── configstore/
 │   └── store.go                  # Unified local/ssh config storage (configs/local.json + ssh.json)
 ├── daemon/
 │   ├── daemon.go                 # HTTP server, flags, graceful shutdown
-│   ├── handlers.go               # REST/JSON handlers, query parsing, attach stream
-│   ├── web.go                    # Embedded Web terminal page + WebSocket bridge
-│   └── web/                      # xterm.js page assets (embedded via go:embed)
+│   ├── handlers.go               # REST/JSON handlers, config CRUD, attach stream
+│   ├── web.go                    # Embedded Web terminal/config pages + WebSocket bridge
+│   └── web/                      # xterm.js terminal + dark config page assets (go:embed)
 ├── message/
 │   └── message.go                # Per-session message index + content files
 ├── session/
@@ -97,6 +101,13 @@ The Web terminal (`start --web`) reuses the same attach primitives
 WebSocket at `/web/{id}/ws`, so browser tabs share the same PTY screen as
 `attach` clients. It is only enabled for sessions started with `--web` and only
 in PTY mode.
+
+The config page at `/config` is embedded alongside the terminal page and uses
+`/api/configs` CRUD endpoints. It supports both local and SSH configs in a
+matching dark theme; SSH passwords are accepted for writes but omitted from
+all responses. `config web [--open]` ensures the daemon is running and prints
+(or opens) the page URL. Both the page and API inherit the daemon bind address
+and have no authentication, so the default localhost-only bind is important.
 
 ---
 

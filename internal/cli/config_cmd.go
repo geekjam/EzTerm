@@ -14,9 +14,9 @@ import (
 
 // cmdConfig manages local and SSH launch configs directly on disk. It does not
 // require a daemon because config files are client-owned state.
-func cmdConfig(jsonOut bool, dataDir string, args []string) int {
+func cmdConfig(jsonOut bool, dataDir string, port int, logLevel string, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: ezterm config <local|ssh|list|delete> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: ezterm config <local|ssh|list|delete|web> [flags]")
 		return 2
 	}
 
@@ -30,6 +30,8 @@ func cmdConfig(jsonOut bool, dataDir string, args []string) int {
 		return configList(jsonOut, store, args[1:])
 	case "delete":
 		return configDelete(jsonOut, store, args[1:])
+	case "web":
+		return cmdConfigWeb(jsonOut, dataDir, port, logLevel, args[1:])
 	default:
 		printError(jsonOut, "unknown config subcommand %q", args[0])
 		return 2

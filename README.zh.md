@@ -54,6 +54,7 @@ go build -o ezterm .
 - **共享终端 attach** — `attach <id>` 以 raw mode 进入会话的实时 PTY 画面（类似 `tmux attach`）：按键与窗口尺寸自动转发，输出实时流回，`Ctrl+]` 脱离而不终止会话。
 - **精确按键输入** — `send --press-key` 发送单个标准终端按键或组合键（如 `ctrl+c`、`enter`、`ctrl+shift+up`、`f5`），不追加换行；PTY 与 pipe 会话均可使用。
 - **本机 Web 终端** — `start --web` 为显式开启的 PTY 会话提供 xterm.js 浏览器画面，通过 WebSocket 实时传输输出、输入、粘贴和尺寸；daemon 默认只监听本机。
+- **本机配置网页** — `ezterm config web [--open]`（或 `http://127.0.0.1:18766/config`）在浏览器中打开深色主题页面，用于创建、编辑、删除已保存的本地/SSH 配置，配色与 Web 终端一致。SSH 密码为只写：页面永不回显已存密码。
 
 ## 命令行
 
@@ -73,6 +74,7 @@ ezterm [全局参数] <命令> [参数]
 | `config local\|ssh` | 创建 / 更新启动配置：`--name` 及类型专属参数 |
 | `config list` | 列出配置（可选 `--type local\|ssh`） |
 | `config delete` | 按 `--name` 删除配置 |
+| `config web` | 确保 daemon 运行并打印配置页 URL（`--open` 打开浏览器） |
 | `health` | 探测 daemon |
 | `daemon` | 前台运行 daemon |
 | `version` | 打印版本 |
@@ -81,7 +83,9 @@ ezterm [全局参数] <命令> [参数]
 
 **退出码：** `0` 成功 · `1` 会话不存在 · `2` 其他错误。
 
-完整示例、启动配置与 Skill 工作流见 [`SKILL.md`](./SKILL.md)。
+完整示例、启动配置、配置网页与 Skill 工作流见 [`SKILL.md`](./SKILL.md)。
+
+配置页面及对应 API 与 daemon 绑定地址一致。默认为仅本机（`127.0.0.1`）；若用 `--host` 暴露 daemon，也会暴露配置 CRUD，请仅在可信网络使用。
 
 ### 示例
 
@@ -109,6 +113,10 @@ ezterm start --name prod
 ezterm config list
 ezterm config delete --name prod
 
+# 在浏览器中打开配置网页。
+ezterm config web --open
+# → configuration page: http://127.0.0.1:18766/config
+
 # 机器可读输出。
 ezterm --json list
 ezterm --json read <id> --timeout 0
@@ -121,7 +129,7 @@ ezterm --json read <id> --timeout 0
 
 ## HTTP API
 
-daemon 提供小型 JSON API（`/health`、`/api/sessions`、`/api/sessions/{id}/output`、`/api/configs` 等），以及按需开启的 Web 终端页面和 WebSocket：`/web/{id}`、`/web/{id}/ws`。详见 [`API.md`](./API.md)（中文版 [`API.zh.md`](./API.zh.md)）。
+daemon 提供小型 JSON API（`/health`、`/api/sessions`、`/api/sessions/{id}/output`、`/api/configs` 等），以及按需开启的 Web 终端页面和 WebSocket：`/web/{id}`、`/web/{id}/ws`，另有配置管理页面 `/config`。详见 [`API.md`](./API.md)（中文版 [`API.zh.md`](./API.zh.md)）。
 
 ## 项目结构与规范
 

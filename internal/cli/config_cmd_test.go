@@ -93,3 +93,9 @@ func TestConfigSSHJSONError(t *testing.T) {
 		t.Fatalf("unexpected JSON error output: %q", out)
 	}
 }
+
+func TestWebConfigURL(t *testing.T) {
+	if got := webConfigURL(18766); got != "http://127.0.0.1:18766/config" {
+		t.Fatalf("webConfigURL = %q", got)
+	}
+}

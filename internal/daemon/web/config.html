@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ezterm Configurations</title>
+  <link rel="stylesheet" href="/config/style.css">
+  <script defer src="/config/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">EZTERM</p>
+      <h1>Configurations</h1>
+      <p class="subtitle">Manage saved local shells and SSH connections.</p>
+    </div>
+    <div class="topbar-actions">
+      <button id="refresh-button" class="button button-quiet" type="button">Refresh</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel list-panel" aria-labelledby="configs-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">SAVED LAUNCHES</p>
+          <h2 id="configs-heading">Your configurations</h2>
+        </div>
+        <span id="config-count" class="count-badge">0</span>
+      </div>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <div id="config-list" class="config-list">
+        <div class="empty-state">Loading configurations...</div>
+      </div>
+    </section>
+
+    <section class="panel form-panel" aria-labelledby="editor-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">CONFIG EDITOR</p>
+          <h2 id="editor-heading">New configuration</h2>
+        </div>
+        <span id="form-mode" class="mode-badge">LOCAL</span>
+      </div>
+
+      <div class="type-switch" role="group" aria-label="Configuration type">
+        <button id="local-type-button" class="type-button active" type="button" data-type="local">Local</button>
+        <button id="ssh-type-button" class="type-button" type="button" data-type="ssh">SSH</button>
+      </div>
+
+      <form id="config-form" novalidate>
+        <div class="field">
+          <label for="name">Name <span class="required">*</span></label>
+          <input id="name" name="name" type="text" autocomplete="off" pattern="[A-Za-z0-9_-]+" required>
+          <p class="hint">Letters, numbers, underscore, and hyphen only.</p>
+        </div>
+
+        <div id="local-fields" class="field-group">
+          <div class="field">
+            <label for="command">Command</label>
+            <input id="command" name="command" type="text" autocomplete="off" placeholder="bash">
+            <p class="hint">Leave empty to use the default shell in PTY mode.</p>
+          </div>
+          <div class="field">
+            <label for="args">Arguments</label>
+            <textarea id="args" name="args" rows="3" placeholder="-l&#10;--color=auto"></textarea>
+            <p class="hint">One argument per line. Quoting is preserved literally.</p>
+          </div>
+          <div class="field">
+            <label for="mode">Mode</label>
+            <select id="mode" name="mode">
+              <option value="pty">PTY — interactive terminal</option>
+              <option value="pipe">Pipe — one-shot output</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="ssh-fields" class="field-group hidden">
+          <div class="field-row">
+            <div class="field">
+              <label for="host">Host <span class="required">*</span></label>
+              <input id="host" name="host" type="text" autocomplete="off" placeholder="db.example.com">
+            </div>
+            <div class="field small-field">
+              <label for="port">Port</label>
+              <input id="port" name="port" type="number" min="1" max="65535" inputmode="numeric" value="22">
+            </div>
+          </div>
+          <div class="field">
+            <label for="user">User <span class="required">*</span></label>
+            <input id="user" name="user" type="text" autocomplete="username" placeholder="deploy">
+          </div>
+          <div class="field">
+            <label for="auth-method">Authentication</label>
+            <select id="auth-method" name="auth_method">
+              <option value="password">Password</option>
+              <option value="key">Private key</option>
+            </select>
+          </div>
+          <div id="password-field" class="field">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="new-password" placeholder="Enter to set or replace">
+            <p id="password-hint" class="hint">The stored password is never sent back to this page. Leave blank to keep it.</p>
+          </div>
+          <div id="key-field" class="field hidden">
+            <label for="key-path">Private key path <span class="required">*</span></label>
+            <input id="key-path" name="key_path" type="text" autocomplete="off" placeholder="~/.ssh/id_ed25519">
+          </div>
+          <div class="field">
+            <label for="shell">Remote shell</label>
+            <input id="shell" name="shell" type="text" autocomplete="off" placeholder="Optional, e.g. /bin/bash">
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button id="cancel-button" class="button button-quiet hidden" type="button">Cancel</button>
+          <button id="save-button" class="button button-primary" type="submit">Save configuration</button>
+        </div>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

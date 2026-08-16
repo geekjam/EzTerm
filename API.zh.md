@@ -188,6 +188,45 @@ CLI 的 `--press-key` 字节（键名、控制字节、CSI 序列）通过 `text
 ]}
 ```
 
+### `GET /api/configs/{name}`
+
+获取单个配置的完整非机密详情（local 配置包含 `args`；SSH 配置永不包含已存密码）。未知返回 `404`。
+
+```json
+{"name": "dev", "type": "local", "command": "bash", "args": ["-l"], "mode": "pty"}
+
+{"name": "prod", "type": "ssh", "host": "db.example.com", "port": 22,
+ "user": "deploy", "auth_method": "password", "key_path": "", "shell": ""}
+```
+
+### `POST /api/configs/{name}`
+
+创建或更新配置。请求体的 `type`（`local` 或 `ssh`）决定写入哪个存储。覆盖同一类型的同名配置即更新；复用另一类型已占用的名称返回 `409`。local pipe 配置必须提供非空 `command`。
+
+```json
+{"type": "local", "command": "bash", "args": ["-l"], "mode": "pty"}
+
+{"type": "ssh", "host": "db.example.com", "port": 22, "user": "deploy",
+ "auth_method": "password", "password": "...", "key_path": "", "shell": "/bin/bash"}
+```
+
+SSH `password` 为**只写**：任何端点都不会返回它。更新既有 password 认证的 SSH 配置时，将 `password` 留空会保留已存值。新建 password 认证配置但无密码、或 key 认证配置但无 `key_path`，返回 `400`。配置名须匹配 `[A-Za-z0-9_-]+`。
+
+| 条件 | 响应 |
+|---|---|
+| 成功（创建或更新） | `200` + 保存后的 `ConfigDetail` |
+| local pipe 配置缺少 `command` | `400` |
+| 跨类型重名 | `409` |
+| 非法类型、缺失 SSH 凭据 | `400` |
+
+### `DELETE /api/configs/{name}`
+
+按名称删除配置（两种类型均可）。成功返回 `204`；未知返回 `404`。
+
+### `GET /config`
+
+内嵌的深色主题网页配置页面。页面列出配置，并通过上述端点创建、编辑、删除 local 与 SSH 配置；随二进制内嵌（无构建步骤，`config.js` 与 `config.css` 位于 `/config/app.js` 与 `/config/style.css`）。与 Web 终端及所有 `/api/*` 路由一样，仅 daemon 绑定地址（默认 `127.0.0.1`）可访问且无认证。关闭页面不影响正在运行的会话。
+
 ## 会话生命周期
 
 ```

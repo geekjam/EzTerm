@@ -69,6 +69,10 @@ go build -o ezterm .
 - **Local Web terminal** — `start --web` exposes an xterm.js browser view for
   an explicitly enabled PTY session, with live output, input, paste, and resize
   over WebSocket. The daemon remains local-only by default.
+- **Web config page** — `ezterm config web [--open]` (or `http://127.0.0.1:18766/config`)
+  opens a dark-themed page to create, edit, and delete saved local/SSH configs
+  in the browser, matching the Web terminal's look. SSH passwords are
+  write-only: the page never returns the stored password.
 
 ## Command Line
 
@@ -88,6 +92,7 @@ ezterm [global flags] <command> [flags]
 | `config local\|ssh` | Create / update a launch config: `--name` plus type-specific flags |
 | `config list` | List configs (optionally `--type local\|ssh`) |
 | `config delete` | Delete a config by `--name` |
+| `config web` | Ensure the daemon runs and print the config page URL (`--open` opens the browser) |
 | `health` | Probe the daemon |
 | `daemon` | Run the daemon in the foreground |
 | `version` | Print the version |
@@ -97,7 +102,11 @@ Global flags (valid before or after the command): `--port` (18766), `--data-dir`
 
 **Exit codes:** `0` success · `1` session not found · `2` other errors.
 
-Full examples, saved configs, and the skill workflow are in [`SKILL.md`](./SKILL.md).
+Full examples, saved configs, the web config page, and the skill workflow are in [`SKILL.md`](./SKILL.md).
+
+The config page and its API follow the daemon bind address. The default is local-only
+(`127.0.0.1`); exposing the daemon with `--host` also exposes configuration CRUD,
+so use that option only on a trusted network.
 
 ### Examples
 
@@ -125,6 +134,10 @@ ezterm start --name prod
 ezterm config list
 ezterm config delete --name prod
 
+# Open the web config page in your browser.
+ezterm config web --open
+# → configuration page: http://127.0.0.1:18766/config
+
 # Machine-readable.
 ezterm --json list
 ezterm --json read <id> --timeout 0
@@ -141,8 +154,8 @@ start/send/read/terminate sessions using the CLI.
 
 The daemon exposes a small JSON API (`/health`, `/api/sessions`,
 `/api/sessions/{id}/output`, `/api/configs`, …) plus the opt-in Web terminal
-page and WebSocket at `/web/{id}` and `/web/{id}/ws`. See
-[`API.md`](./API.md).
+page and WebSocket at `/web/{id}` and `/web/{id}/ws`, and a config management
+page at `/config`. See [`API.md`](./API.md).
 
 ## Project Structure & Conventions
 

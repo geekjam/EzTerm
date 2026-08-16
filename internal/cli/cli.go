@@ -52,7 +52,7 @@ func Run(args []string) int {
 
 	switch cmd {
 	case "config":
-		return cmdConfig(*jsonOut, expandedDataDir, cmdArgs)
+		return cmdConfig(*jsonOut, expandedDataDir, *port, *logLevel, cmdArgs)
 	case "health":
 		return cmdHealth(*jsonOut, *port, cmdArgs)
 	case "start", "send", "read", "attach", "terminate", "delete", "list":
@@ -162,7 +162,7 @@ Commands:
   terminate    stop a running session
   delete       remove a finished session
   list         list sessions
-  config       manage launch configs (local, ssh, list, delete)
+  config       manage launch configs (local, ssh, list, delete, web)
   daemon       run the daemon in the foreground
   health       probe the daemon
   version      print the version
@@ -172,6 +172,9 @@ Global flags:
   --data-dir <dir> daemon data directory (default ~/.ezterm)
   --json           emit stable JSON output
   --log-level <l>  daemon log level when auto-spawned (debug, info, warn, error)
+
+Config web:
+  ezterm config web [--open]  serve and optionally open the config page
 `)
 }
 
