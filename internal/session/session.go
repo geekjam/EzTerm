@@ -16,9 +16,9 @@ import (
 	"ezterm/internal/ansi"
 	"ezterm/internal/api"
 	"ezterm/internal/buffer"
+	"ezterm/internal/configstore"
 	"ezterm/internal/message"
 	"ezterm/internal/sshclient"
-	"ezterm/internal/sshconfig"
 	"github.com/google/uuid"
 )
 
@@ -84,7 +84,7 @@ type Session struct {
 }
 
 // New starts a session according to cfg.
-func New(cfg Config, msgMgr *message.Manager, sshStore *sshconfig.Store) (*Session, error) {
+func New(cfg Config, msgMgr *message.Manager, cfgStore *configstore.Store) (*Session, error) {
 	if err := normalizeConfig(&cfg); err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func New(cfg Config, msgMgr *message.Manager, sshStore *sshconfig.Store) (*Sessi
 	var p proc
 	var err error
 	if isRemote(cfg.SSHConfig) {
-		p, err = startRemote(cfg, sshStore, bufWriter{b: buf})
+		p, err = startRemote(cfg, cfgStore, bufWriter{b: buf})
 	} else {
 		p, err = newLocalProc(cfg.Command, cfg.Args, cfg.Mode, cfg.Rows, cfg.Cols, cfg.Env, bufWriter{b: buf})
 	}
@@ -185,13 +185,13 @@ func IsRemote(sshConfig string) bool {
 	return isRemote(sshConfig)
 }
 
-func startRemote(cfg Config, sshStore *sshconfig.Store, out io.Writer) (proc, error) {
-	if sshStore == nil {
-		return nil, fmt.Errorf("SSH profile store is not configured")
+func startRemote(cfg Config, cfgStore *configstore.Store, out io.Writer) (proc, error) {
+	if cfgStore == nil {
+		return nil, fmt.Errorf("config store is not configured")
 	}
-	profile, err := sshStore.Get(cfg.SSHConfig)
+	profile, err := cfgStore.GetSSH(cfg.SSHConfig)
 	if err != nil {
-		return nil, fmt.Errorf("load SSH profile: %w", err)
+		return nil, fmt.Errorf("load SSH config: %w", err)
 	}
 	command := cfg.Command
 	if strings.TrimSpace(command) == "" {

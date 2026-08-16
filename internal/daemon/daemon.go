@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"ezterm/internal/config"
+	"ezterm/internal/configstore"
 	"ezterm/internal/message"
 	"ezterm/internal/session"
-	"ezterm/internal/sshconfig"
 	"ezterm/internal/storage"
 )
 
@@ -60,13 +60,13 @@ func Run(args []string) int {
 		return 1
 	}
 	msgMgr := message.NewManager(store)
-	sshStore := sshconfig.NewStore(cfg.DataDir)
-	mgr := session.NewManager(store, msgMgr, sshStore)
+	cfgStore := configstore.NewStore(cfg.DataDir)
+	mgr := session.NewManager(store, msgMgr, cfgStore)
 	if err := mgr.Restore(); err != nil {
 		slog.Warn("restore sessions", "error", err)
 	}
 
-	handler := NewHandlerWithAddress(mgr, sshStore, cfg.Host, cfg.Port)
+	handler := NewHandlerWithAddress(mgr, cfgStore, cfg.Host, cfg.Port)
 	addr := net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port))
 	server := &http.Server{
 		Addr:              addr,

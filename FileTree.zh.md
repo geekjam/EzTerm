@@ -53,9 +53,11 @@ internal/
 │   ├── spawn.go                  # auto-spawn daemon（探测 /health → 后台拉起）
 │   ├── spawn_{windows,unix}.go   # 平台相关后台进程分离
 │   ├── env.go                    # ~/.ezterm 与 ~ 展开
-│   └── sshconfig_cmd.go          # ssh-config init/list 本地管理
+│   └── config_cmd.go             # config local/ssh/list/delete 本地管理
 ├── config/
 │   └── config.go                 # 配置默认值、校验、~ 展开
+├── configstore/
+│   └── store.go                  # 统一 local/ssh 配置存储（configs/local.json + ssh.json）
 ├── daemon/
 │   ├── daemon.go                 # HTTP 服务器、flag、优雅关闭
 │   ├── handlers.go               # REST/JSON handler、查询参数解析、attach 流
@@ -74,15 +76,14 @@ internal/
 ├── sshclient/
 │   └── client.go                 # SSH 建连、PTY 请求、流桥接
 ├── sshconfig/
-│   ├── config.go                 # profile 模型与校验
-│   └── store.go                  # profile 持久化（data-dir/ssh_configs）
+│   └── config.go                 # profile 模型与校验（存储由 configstore 负责）
 └── storage/
     └── store.go                  # 原子 JSON 持久化（temp + fsync + rename）
 ```
 
-模块内按职责分包，无循环依赖：`cli` → `daemon`/`sshconfig`；
-`daemon` → `session`/`sshconfig`/`message`/`storage`；
-`session` → `buffer`/`ansi`/`message`/`storage`/`sshclient`/`sshconfig`。
+模块内按职责分包，无循环依赖：`cli` → `daemon`/`configstore`/`sshconfig`；
+`daemon` → `session`/`configstore`/`message`/`storage`；
+`session` → `buffer`/`ansi`/`message`/`storage`/`sshclient`/`configstore`。
 
 attach 流程：CLI `attach` 命令打开 `GET /api/sessions/{id}/attach`（daemon 流式推送原始 PTY 字节流，先重放保留画面），按键通过 `POST /api/sessions/{id}/input`（`press_enter=false`）转发，窗口尺寸变化通过 `POST /api/sessions/{id}/resize` 同步；`Ctrl+]` 本地脱离而不终止会话。
 
@@ -98,6 +99,8 @@ Web 终端（`start --web`）复用同一套 attach 原语（输出用 `AttachRe
 ├── messages/<session_id>/
 │   ├── index.json                # 消息索引
 │   └── messages/<msg_id>.json    # 单条消息（input/output/system）
-├── ssh_configs/<name>/config.json # SSH profile（0600 权限）
+├── configs/
+│   ├── local.json                # 本地启动配置映射（0600 权限）
+│   └── ssh.json                  # SSH 启动配置映射（0600 权限）
 └── ezterm.log                   # auto-spawn daemon 的日志
 ```

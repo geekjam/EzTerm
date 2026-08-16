@@ -100,12 +100,15 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-// SSHProfileSummary is the non-secret representation of an SSH profile.
-type SSHProfileSummary struct {
+// ConfigSummary is the non-secret representation of a launch config.
+type ConfigSummary struct {
 	Name         string `json:"name"`
-	Host         string `json:"host"`
-	Port         int    `json:"port"`
-	User         string `json:"user"`
-	AuthMethod   string `json:"auth_method"`
-	DefaultShell string `json:"default_shell"`
+	Type         string `json:"type"`
+	Command      string `json:"command,omitempty"`
+	Mode         string `json:"mode,omitempty"`
+	Host         string `json:"host,omitempty"`
+	Port         int    `json:"port,omitempty"`
+	User         string `json:"user,omitempty"`
+	AuthMethod   string `json:"auth_method,omitempty"`
+	DefaultShell string `json:"default_shell,omitempty"`
 }

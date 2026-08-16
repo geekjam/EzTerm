@@ -46,15 +46,17 @@ Global flags (can appear before or after the subcommand):
 
 | Command | Purpose |
 |---|---|
-| `ezterm start --command <cmd> [--args a] [--mode pty\|pipe] [--name n] [--rows 24] [--cols 80] [--ssh-config profile] [--web]` | Start a session; prints its ID. Default mode is `pty`. `--ssh-config internal` (or empty) = local host. `--web` also exposes a local browser terminal (PTY only). |
+| `ezterm start --name <config> [--web] [--rows 24] [--cols 80] [--timeout s]` | Start a session from a saved config (created with `config local/ssh`). Default mode is from the config; local pipe configs keep their mode. `--web` exposes a local browser terminal (PTY only) and defaults off. |
 | `ezterm send <id> --text <text> [--press-enter]` or `ezterm send <id> --press-key <key>` | Write input to a session. Use `--press-key` to send one terminal key/combination such as `ctrl+c`, `enter`, or `f5` (see Press-key input). |
 | `ezterm read <id> [--reader 0] [--timeout 30] [--raw] [--max-bytes n]` | Read new output since the last read. Blocks up to `--timeout` seconds (0 = non-blocking). Strips ANSI unless `--raw`. Returns EOF when the process exited and output is drained. |
 | `ezterm attach <id>` | Enter a running PTY in raw mode. Output is rendered live; keystrokes and resize are forwarded; `Ctrl+]` detaches without stopping the session. |
 | `ezterm terminate <id>` | Stop a session (graceful, then force). |
 | `ezterm delete <id>` | Remove a finished session from the list. |
 | `ezterm list` | List sessions (ID / name / mode / status / ssh / exit / command). |
-| `ezterm ssh-config init [flags] <name>` | Create an SSH profile skeleton (flags: `--host`, `--user`, `--auth password\|key`, `--password`, `--key-path`, `--shell`, `--port`). |
-| `ezterm ssh-config list` | List SSH profiles. |
+| `ezterm config local --name <name> [--command <cmd>] [--args a] [--mode pty\|pipe]` | Create/update a local launch config. `--name` is the config name (also selected by `start --name`). `--command` empty = default shell. `--mode` defaults to `pty`. |
+| `ezterm config ssh --name <name> --host <host> --user <u> --auth password --password <p> [--port 22] [--shell <s>]` or `... --auth key --key-path <path>` | Create/update an SSH launch config; choose exactly one auth mode and provide its credential parameter. |
+| `ezterm config list [--type local\|ssh]` | List saved configs. |
+| `ezterm config delete --name <name>` | Delete a saved config by name. |
 | `ezterm health` / `ezterm version` | Probe the daemon / print version. |
 
 Exit codes: `0` success, `1` session not found, `2` other errors (daemon
@@ -63,8 +65,10 @@ unreachable, invalid input, conflicts).
 ## Typical workflow
 
 ```bash
-# 1. Start an interactive shell (local). Recommend --web for a browser view.
-ezterm start --name dev --mode pty --web
+# 1. Define a local config and start it (recommend --web for a browser view).
+ezterm config local --name dev --command bash --mode pty
+# → local config "dev" saved
+ezterm start --name dev --web
 # → session a1b2c3d45678 created
 #   web terminal: http://127.0.0.1:18766/web/a1b2c3d45678
 # You must provide users with the URL of the web terminal is launching.
@@ -96,7 +100,8 @@ attach stream and restores the local terminal.
 
 ```bash
 # Start a PTY session and capture its generated ID.
-ezterm start --name dev --mode pty
+ezterm config local --name dev --mode pty
+ezterm start --name dev
 
 # In another terminal, connect to the same session.
 ezterm attach <id>
@@ -119,7 +124,8 @@ holding a terminal open.
 
 ```bash
 # Start a PTY session with a browser view.
-ezterm start --name dev --mode pty --web
+ezterm config local --name dev --mode pty
+ezterm start --name dev --web
 # → session a1b2c3d45678 created
 #   web terminal: http://127.0.0.1:18766/web/a1b2c3d45678
 
@@ -143,7 +149,8 @@ ezterm start --name dev --mode pty --web
 For non-interactive one-shot output use `--mode pipe` to avoid terminal echo:
 
 ```bash
-ezterm start --command sh --args -c --args 'echo hello' --mode pipe
+ezterm config local --name one-shot --command sh --args -c --args 'echo hello' --mode pipe
+ezterm start --name one-shot
 ezterm read <id> --timeout 5
 # → hello
 ```
@@ -180,18 +187,27 @@ ezterm send <id> --press-key left               # arrow key
   undefined combinations (`ctrl+1`, `shift+1`) print a clear error and exit
   with code 2.
 
-## SSH remote sessions
+## Saved local and SSH configs
 
-Create a profile once, then start sessions by name:
+Create a config once, then start sessions by config name. Config names are
+unique across local and SSH types:
 
 ```bash
-ezterm ssh-config init prod --host db.example.com --user deploy --auth key --key-path ~/.ssh/id_ed25519
-# Credentials are finalized out-of-band by the user in the stored profile;
-# do not read or edit files under ~/.ezterm/ssh_configs/ (see Credential safety).
+# Local interactive shell.
+ezterm config local --name dev --command bash --mode pty
+ezterm start --name dev --web
 
-ezterm start --ssh-config prod --name db-shell --web   # interactive remote shell (+ browser view)
-ezterm start --ssh-config prod --command 'df -h' --mode pipe   # one-shot remote command
-ezterm ssh-config list
+# One-shot local command.
+ezterm config local --name disk --command df --args -h --mode pipe
+ezterm start --name disk
+
+# Remote SSH shell.
+ezterm config ssh --name prod --host db.example.com --user deploy --auth key --key-path ~/.ssh/id_ed25519
+# Credentials are finalized out-of-band by the user in the stored config;
+# do not read or edit files under ~/.ezterm/configs/ (see Credential safety).
+ezterm start --name prod
+
+ezterm config list
 ```
 
 Sessions use the profile's credentials (password or private key); private keys
@@ -200,15 +216,15 @@ are never embedded in the repository or config template.
 ## Credential safety — read this before using SSH
 
 The default data directory `~/.ezterm` (or any custom `--data-dir`) contains
-**sensitive material**: SSH profiles with **plaintext passwords** and private
-key paths (`ssh_configs/<name>/config.json`, mode 0600), session transcripts
+**sensitive material**: SSH configs with **plaintext passwords** and private
+key paths (`configs/ssh.json`, mode 0600), session transcripts
 that may include password prompts and typed secrets (`messages/`), and a daemon
 log. Treat every file there as a secret.
 
 **Never** do any of the following:
 
 - **Do not read, `cat`, `type`, `head`, `tail`, or open any file under
-  `~/.ezterm`** — not `ssh_configs/`, not `sessions.json`, not `messages/`,
+  `~/.ezterm`** — not `configs/`, not `sessions.json`, not `messages/`,
   not `ezterm.log`. This includes listing the directory with `ls`/`find`.
 - **Do not print, paste, quote, or repeat passwords or private keys** in tool
   calls, replies, logs, diffs, or any file.
@@ -223,15 +239,14 @@ log. Treat every file there as a secret.
 
 Instead:
 
-- Use `ezterm ssh-config list` (non-secret summaries) and `ezterm list` —
+- Use `ezterm config list` (non-secret summaries) and `ezterm list` —
   never raw file reads.
-- Reference profiles by **name only**: `ezterm start --ssh-config prod`.
-  The daemon loads the credentials itself.
-- To create or fix a profile's credentials, ask the user to run
-  `ezterm ssh-config init ...` (or edit the profile file themselves);
-  do not read the file back afterward.
-- `ssh-config init --password` takes a password on the command line; prefer
-  it only when the user supplied the value, and never echo it later.
+- Reference configs by **name only**: `ezterm start --name prod`.
+  The daemon loads SSH credentials itself.
+- To create or fix a config's credentials, ask the user to run
+  `ezterm config ssh --name prod ...`; do not read the config file afterward.
+- `config ssh --password` takes a password on the command line; prefer it
+  only when the user supplied the value, and never echo it later.
 
 ## JSON output
 
@@ -270,8 +285,8 @@ Add `--json` for stable, parseable output (no human decoration):
   your first `read`. Reads still return all retained output, then `eof: true`.
 - **Termination** sends a graceful signal, then forces after a short grace;
   `terminate` is idempotent.
-- **Data directory** holds `sessions.json`, `messages/`, and `ssh_configs/`
-  (SSH profiles store **plaintext passwords**, mode 0600). Never read files
-  under the data dir directly — use `ezterm list` / `ezterm read` /
-  `ssh-config list` — and follow the **Credential safety** rules above.
+- **Data directory** holds `sessions.json`, `messages/`, and `configs/`
+  (`configs/ssh.json` stores **plaintext passwords**, mode 0600). Never read
+  files under the data dir directly — use `ezterm list` / `ezterm read` /
+  `ezterm config list` — and follow the **Credential safety** rules above.
   Restarting the daemon restores past (finished) sessions as history.

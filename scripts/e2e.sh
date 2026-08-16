@@ -72,6 +72,17 @@ json_id() {
   printf '%s' "$1" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'
 }
 
+# check_id <description> <id> — assert a session id was extracted and is a
+# plausible 12-hex-char value (session ids contain no dashes).
+check_id() {
+  local id="$2"
+  if printf '%s' "$id" | grep -qE '^[0-9a-f]{12}$'; then
+    ok "$1"
+  else
+    fail "$1 (got: $(printf '%s' "$id" | head -c 200))"
+  fi
+}
+
 echo_parts() {
   case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
@@ -96,10 +107,11 @@ check "health reports ok" "$HEALTH" "ok"
 
 say "pipe session: start / read / status"
 mapfile -t ECHO < <(echo_parts)
-START_JSON="$("$BIN" --port "$PORT" --data-dir "$DATA_DIR" --json start \
-  --command "${ECHO[0]}" --args "${ECHO[1]}" --args "${ECHO[2]}" --args "${ECHO[3]}" --mode pipe --name e2e-pipe)"
+"$BIN" --data-dir "$DATA_DIR" config local --name e2e-pipe \
+  --command "${ECHO[0]}" --args "${ECHO[1]}" --args "${ECHO[2]}" --args "${ECHO[3]}" --mode pipe >/dev/null
+START_JSON="$("$BIN" --port "$PORT" --data-dir "$DATA_DIR" --json start --name e2e-pipe)"
 PIPE_SID="$(json_id "$START_JSON")"
-check "session id extracted" "$PIPE_SID" "-"
+check_id "session id extracted" "$PIPE_SID"
 if validate_json "$START_JSON"; then ok "start output is valid JSON"; else fail "start output is not valid JSON"; fi
 
 READ_OUT="$("$BIN" --port "$PORT" --data-dir "$DATA_DIR" read "$PIPE_SID" --timeout 10)"
@@ -108,9 +120,10 @@ READ_JSON="$("$BIN" --port "$PORT" --data-dir "$DATA_DIR" --json read "$PIPE_SID
 check "read JSON contains eof" "$READ_JSON" '"eof"'
 
 say "PTY session: interactive input round-trip"
-PTY_START="$("$BIN" --port "$PORT" --data-dir "$DATA_DIR" --json start --mode pty --name e2e-pty)"
+"$BIN" --data-dir "$DATA_DIR" config local --name e2e-pty --mode pty >/dev/null
+PTY_START="$("$BIN" --port "$PORT" --data-dir "$DATA_DIR" --json start --name e2e-pty)"
 PTY_SID="$(json_id "$PTY_START")"
-check "pty session id extracted" "$PTY_SID" "-"
+check_id "pty session id extracted" "$PTY_SID"
 "$BIN" --port "$PORT" --data-dir "$DATA_DIR" send "$PTY_SID" --text 'echo E2E-PTY-MARKER' --press-enter >/dev/null
 # Poll for the echoed command to appear (PTY input may echo).
 PTY_READ=""
@@ -122,9 +135,10 @@ done
 check "pty echoed command appears in output" "$PTY_READ" "E2E-PTY-MARKER"
 
 say "attach: replay final screen after session end"
-ATTACH_START="$("$BIN" --port "$PORT" --data-dir "$DATA_DIR" --json start --mode pty --name e2e-attach)"
+"$BIN" --data-dir "$DATA_DIR" config local --name e2e-attach --mode pty >/dev/null
+ATTACH_START="$("$BIN" --port "$PORT" --data-dir "$DATA_DIR" --json start --name e2e-attach)"
 ATTACH_SID="$(json_id "$ATTACH_START")"
-check "attach session id extracted" "$ATTACH_SID" "-"
+check_id "attach session id extracted" "$ATTACH_SID"
 "$BIN" --port "$PORT" --data-dir "$DATA_DIR" send "$ATTACH_SID" --text 'echo E2E-ATTACH-MARKER' --press-enter >/dev/null
 ATTACH_READ=""
 for _ in $(seq 1 20); do
@@ -174,16 +188,20 @@ RC=$?
 set -e
 if [ "$RC" -eq 1 ]; then ok "attach to unknown session exits 1"; else fail "attach unknown exit code = $RC, want 1"; fi
 
-say "ssh-config management (no daemon interaction)"
-SSH_INIT="$("$BIN" --data-dir "$DATA_DIR" ssh-config init e2eprofile --host 127.0.0.1 --user nobody --auth password)"
-check "profile created" "$SSH_INIT" "e2eprofile"
-SSH_LIST="$("$BIN" --data-dir "$DATA_DIR" ssh-config list)"
-check "profile listed" "$SSH_LIST" "e2eprofile"
+say "config management (no daemon interaction)"
+SSH_INIT="$("$BIN" --data-dir "$DATA_DIR" config ssh --name e2eprofile --host 127.0.0.1 --user nobody --auth key --key-path /nonexistent/e2e_key)"
+check "ssh config created" "$SSH_INIT" "e2eprofile"
+SSH_LIST="$("$BIN" --data-dir "$DATA_DIR" config list)"
+check "config listed" "$SSH_LIST" "e2eprofile"
+LOCAL_INIT="$("$BIN" --data-dir "$DATA_DIR" config local --name e2elocal --command whoami --mode pipe)"
+check "local config created" "$LOCAL_INIT" "e2elocal"
 set +e
-"$BIN" --port "$PORT" --data-dir "$DATA_DIR" start --ssh-config e2eprofile --command whoami --timeout 2 >/dev/null 2>&1
+"$BIN" --port "$PORT" --data-dir "$DATA_DIR" start --name e2eprofile --timeout 2 >/dev/null 2>&1
 RC=$?
 set -e
 if [ "$RC" -eq 2 ]; then ok "unreachable SSH host fails cleanly (exit 2)"; else fail "ssh failure exit code = $RC, want 2"; fi
+"$BIN" --data-dir "$DATA_DIR" config delete --name e2eprofile >/dev/null
+"$BIN" --data-dir "$DATA_DIR" config delete --name e2elocal >/dev/null
 
 say "results: $PASS passed, $FAIL failed"
 if [ "$FAIL" -gt 0 ]; then exit 1; fi

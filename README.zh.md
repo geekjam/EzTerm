@@ -31,8 +31,10 @@
 go build -o ezterm .
 
 # 首次命令会自动在后台拉起 daemon（默认端口 18766，数据目录 ~/.ezterm）。
-./ezterm start --command python3 --name repl
-./ezterm start --name dev --mode pty --web
+./ezterm config local --name repl --command python3
+./ezterm start --name repl
+./ezterm config local --name dev --mode pty
+./ezterm start --name dev --web
 ./ezterm send <id> --text '2 + 2' --press-enter
 ./ezterm read <id> --timeout 30
 
@@ -44,7 +46,7 @@ go build -o ezterm .
 
 - **交互式会话** — 以 PTY 或管道模式启动进程，跨多轮发送输入、阻塞或非阻塞读取输出。
 - **自动拉起 daemon** — 后台服务在首次使用时启动，同时提供 `ezterm daemon` 子命令。
-- **SSH profile** — 通过命名配置（密码或私钥认证）建立远端交互或一次性会话。
+- **保存的启动配置** — 通过 `config local/ssh` 定义命名的本地或 SSH 会话配置，再由 `start --name` 启动；SSH 支持密码或私钥认证。
 - **稳定的 `--json` 输出** — 面向 Skill/工具的可解析输出。
 - **多游标输出缓冲** — 每个 reader 独立游标、保留历史、可设上限的阻塞读取。
 - **持久化** — 数据目录保存 `sessions.json` 与会话消息日志；重启后历史会话恢复为已结束记录。
@@ -61,14 +63,16 @@ ezterm [全局参数] <命令> [参数]
 
 | 命令 | 说明 |
 |---|---|
-| `start` | 启动会话：`--command`、`--args`、`--mode pty\|pipe`、`--name`、`--rows`、`--cols`、`--ssh-config`、`--web` |
+| `start` | 按保存的配置启动会话：`--name <配置名>`，可选 `--web`、`--rows`、`--cols`、`--timeout` |
 | `send <id>` | 发送输入：`--text`、`--press-enter`，或用 `--press-key` 发送单个按键/组合键（如 `ctrl+c`、`enter`、`f5`） |
 | `read <id>` | 读取新输出：`--reader`、`--timeout <秒>`、`--raw`、`--max-bytes` |
 | `attach <id>` | 以 raw mode 进入运行中的 PTY 会话；`Ctrl+]` 脱离 |
 | `terminate <id>` | 停止会话（先优雅后强制） |
 | `delete <id>` | 删除已结束的会话 |
 | `list` | 列出会话 |
-| `ssh-config init\|list` | 创建 / 列出 SSH profile |
+| `config local\|ssh` | 创建 / 更新启动配置：`--name` 及类型专属参数 |
+| `config list` | 列出配置（可选 `--type local\|ssh`） |
+| `config delete` | 按 `--name` 删除配置 |
 | `health` | 探测 daemon |
 | `daemon` | 前台运行 daemon |
 | `version` | 打印版本 |
@@ -77,14 +81,18 @@ ezterm [全局参数] <命令> [参数]
 
 **退出码：** `0` 成功 · `1` 会话不存在 · `2` 其他错误。
 
-完整示例、SSH profile 与 Skill 工作流见 [`SKILL.md`](./SKILL.md)。
+完整示例、启动配置与 Skill 工作流见 [`SKILL.md`](./SKILL.md)。
 
 ### 示例
 
 ```bash
-# 本地交互 PTY shell，以及一次性管道命令。
-ezterm start --name dev --mode pty
-ezterm start --command df --args -h --mode pipe
+# 创建本地配置并启动（--web 可选；rows/cols 默认 24/80）。
+ezterm config local --name dev --command bash --mode pty
+ezterm start --name dev --web
+
+# 从保存的配置启动一次性管道命令。
+ezterm config local --name df --command df --args -h --mode pipe
+ezterm start --name df
 
 # 在自己的终端接管正在运行的 shell（Ctrl+] 脱离）。
 ezterm attach <id>
@@ -93,12 +101,13 @@ ezterm attach <id>
 ezterm send <id> --press-key ctrl+c
 # 其他示例：ctrl+shift+up、left、enter、f5
 
-# 启动 PTY 并开启本机浏览器终端，访问命令打印的 URL。
-ezterm start --name web-dev --mode pty --web
+# 通过保存的配置连接 SSH。
+ezterm config ssh --name prod --host db.example.com --user deploy --auth key --key-path ~/.ssh/id_ed25519
+ezterm start --name prod
 
-# 通过 profile 连接 SSH。
-ezterm ssh-config init prod --host db.example.com --user deploy --auth key --key-path ~/.ssh/id_ed25519
-ezterm start --ssh-config prod --name db-shell
+# 管理配置。
+ezterm config list
+ezterm config delete --name prod
 
 # 机器可读输出。
 ezterm --json list
@@ -112,7 +121,7 @@ ezterm --json read <id> --timeout 0
 
 ## HTTP API
 
-daemon 提供小型 JSON API（`/health`、`/api/sessions`、`/api/sessions/{id}/output`、`/api/ssh-configs` 等），以及按需开启的 Web 终端页面和 WebSocket：`/web/{id}`、`/web/{id}/ws`。详见 [`API.md`](./API.md)（中文版 [`API.zh.md`](./API.zh.md)）。
+daemon 提供小型 JSON API（`/health`、`/api/sessions`、`/api/sessions/{id}/output`、`/api/configs` 等），以及按需开启的 Web 终端页面和 WebSocket：`/web/{id}`、`/web/{id}/ws`。详见 [`API.md`](./API.md)（中文版 [`API.zh.md`](./API.zh.md)）。
 
 ## 项目结构与规范
 

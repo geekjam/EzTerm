@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"ezterm/internal/api"
+	"ezterm/internal/configstore"
 	"ezterm/internal/message"
-	"ezterm/internal/sshconfig"
 	"ezterm/internal/storage"
 )
 
@@ -19,14 +19,14 @@ type Manager struct {
 	sessions   sync.Map // string -> *Session
 	store      *storage.Store
 	msgMgr     *message.Manager
-	sshStore   *sshconfig.Store
+	cfgStore   *configstore.Store
 	onChangeMu sync.RWMutex
 	onChange   func()
 }
 
 // NewManager creates a session manager.
-func NewManager(store *storage.Store, msgMgr *message.Manager, sshStore *sshconfig.Store) *Manager {
-	return &Manager{store: store, msgMgr: msgMgr, sshStore: sshStore}
+func NewManager(store *storage.Store, msgMgr *message.Manager, cfgStore *configstore.Store) *Manager {
+	return &Manager{store: store, msgMgr: msgMgr, cfgStore: cfgStore}
 }
 
 // SetChangeListener registers a callback invoked on lifecycle changes.
@@ -71,7 +71,7 @@ func (m *Manager) Restore() error {
 
 // Create starts and registers a new session.
 func (m *Manager) Create(cfg Config) (*Session, error) {
-	s, err := New(cfg, m.msgMgr, m.sshStore)
+	s, err := New(cfg, m.msgMgr, m.cfgStore)
 	if err != nil {
 		return nil, err
 	}

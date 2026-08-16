@@ -51,8 +51,8 @@ func Run(args []string) int {
 	}
 
 	switch cmd {
-	case "ssh-config":
-		return cmdSSHConfig(*jsonOut, expandedDataDir, cmdArgs)
+	case "config":
+		return cmdConfig(*jsonOut, expandedDataDir, cmdArgs)
 	case "health":
 		return cmdHealth(*jsonOut, *port, cmdArgs)
 	case "start", "send", "read", "attach", "terminate", "delete", "list":
@@ -65,7 +65,7 @@ func Run(args []string) int {
 		}
 		switch cmd {
 		case "start":
-			return cmdStart(client, *jsonOut, cmdArgs)
+			return cmdStart(client, *jsonOut, expandedDataDir, cmdArgs)
 		case "send":
 			return cmdSend(client, *jsonOut, cmdArgs)
 		case "read":
@@ -89,21 +89,31 @@ func Run(args []string) int {
 // before or after the subcommand.
 // splitGlobalFlags separates terminal-global flags from the subcommand and its
 // flags. Global flags are only recognized before the command or after any
-// daemon-requiring command; subcommands that own their own flags (daemon,
-// ssh-config) keep them.
+// daemon-requiring command; subcommands that own their own flags (config,
+// daemon) keep them.
 func splitGlobalFlags(args []string) (globals, rest []string) {
 	command := ""
+	configSubcommand := ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-		if command != "ssh-config" && command != "daemon" && takeGlobalFlag(args, &i, &globals) {
+		preserveConfigPort := command == "config" && configSubcommand == "ssh" && isPortFlag(a)
+		if command != "daemon" && !preserveConfigPort && takeGlobalFlag(args, &i, &globals) {
 			continue
 		}
 		rest = append(rest, a)
 		if command == "" && !strings.HasPrefix(a, "-") {
 			command = a
+		} else if command == "config" && configSubcommand == "" && !strings.HasPrefix(a, "-") {
+			configSubcommand = a
 		}
 	}
 	return globals, rest
+}
+
+// isPortFlag identifies --port forms. The config ssh subcommand owns this
+// flag for the remote SSH port; all other commands treat it as global.
+func isPortFlag(arg string) bool {
+	return arg == "--port" || strings.HasPrefix(arg, "--port=")
 }
 
 // takeGlobalFlag reports whether args[i] is a terminal-global flag, appending it
@@ -145,14 +155,14 @@ func usage(fs *flag.FlagSet, msg string) {
 	fmt.Fprint(os.Stderr, `Usage: ezterm [global flags] <command> [flags]
 
 Commands:
-  start        start a session (local or via SSH profile; --web opens a browser terminal)
+  start        start a session from a saved config (--name <config>; optional --web/--rows/--cols/--timeout)
   send         write input to a session (--text/--press-enter, or --press-key KEY)
   read         read output from a session
   attach       attach to a running PTY session (Ctrl+] to detach)
   terminate    stop a running session
   delete       remove a finished session
   list         list sessions
-  ssh-config   manage SSH profiles (init, list)
+  config       manage launch configs (local, ssh, list, delete)
   daemon       run the daemon in the foreground
   health       probe the daemon
   version      print the version

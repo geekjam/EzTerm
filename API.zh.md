@@ -176,13 +176,16 @@ CLI 的 `--press-key` 字节（键名、控制字节、CSI 序列）通过 `text
 
 会话结束且保留输出全部发送完毕后，服务器以正常关闭码关闭连接。
 
-### `GET /api/ssh-configs`
+### `GET /api/configs`
 
-列出 SSH profile 摘要（不含机密字段）。
+列出 local 与 SSH 启动配置摘要（不含机密字段）。
 
 ```json
-{"ssh_configs": [ {"name": "prod", "host": "db.example.com", "port": 22,
-  "user": "deploy", "auth_method": "key", "default_shell": ""} ]}
+{"configs": [
+  {"name": "dev", "type": "local", "command": "bash", "mode": "pty"},
+  {"name": "prod", "type": "ssh", "host": "db.example.com", "port": 22,
+   "user": "deploy", "auth_method": "key", "default_shell": ""}
+]}
 ```
 
 ## 会话生命周期

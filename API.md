@@ -206,13 +206,16 @@ Protocol (one bidirectional connection):
 When the session ends and all retained output has been sent, the server closes
 the connection with a normal closure.
 
-### `GET /api/ssh-configs`
+### `GET /api/configs`
 
-List SSH profile summaries (non-secret fields).
+List launch config summaries (non-secret fields) for both local and SSH configs.
 
 ```json
-{"ssh_configs": [ {"name": "prod", "host": "db.example.com", "port": 22,
-  "user": "deploy", "auth_method": "key", "default_shell": ""} ]}
+{"configs": [
+  {"name": "dev", "type": "local", "command": "bash", "mode": "pty"},
+  {"name": "prod", "type": "ssh", "host": "db.example.com", "port": 22,
+   "user": "deploy", "auth_method": "key", "default_shell": ""}
+]}
 ```
 
 ## Session Lifecycle

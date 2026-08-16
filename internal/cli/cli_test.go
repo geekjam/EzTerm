@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"ezterm/internal/api"
+	"ezterm/internal/configstore"
+	"ezterm/internal/sshconfig"
 )
 
 func reorderFS() *flag.FlagSet {
@@ -25,7 +27,6 @@ func reorderFS() *flag.FlagSet {
 	fs.String("command", "", "command")
 	fs.Var(&stringList{}, "args", "args")
 	fs.String("mode", "", "mode")
-	fs.String("ssh-config", "", "ssh-config")
 	return fs
 }
 
@@ -65,8 +66,12 @@ func TestSplitGlobalFlags(t *testing.T) {
 		{"json after command", []string{"list", "--json"}, []string{"--json"}, []string{"list"}},
 		{"port with value", []string{"--port", "18766", "--data-dir", "X", "start"},
 			[]string{"--port", "18766", "--data-dir", "X"}, []string{"start"}},
-		{"ssh-config keeps own port", []string{"ssh-config", "init", "--port", "2222", "mybox"},
-			nil, []string{"ssh-config", "init", "--port", "2222", "mybox"}},
+		{"config keeps own port", []string{"config", "ssh", "--port", "2222", "mybox"},
+			nil, []string{"config", "ssh", "--port", "2222", "mybox"}},
+		{"config ssh port kept with global", []string{"--json", "config", "ssh", "--port", "2222", "mybox"},
+			[]string{"--json"}, []string{"config", "ssh", "--port", "2222", "mybox"}},
+		{"config global flag after subcommand", []string{"config", "list", "--json"},
+			[]string{"--json"}, []string{"config", "list"}},
 		{"daemon keeps own flags", []string{"daemon", "--port", "18770"},
 			nil, []string{"daemon", "--port", "18770"}},
 		{"send with globals and sub flags", []string{"--json", "send", "abc", "--text", "hi"},
@@ -141,8 +146,14 @@ func TestStartWebFlag(t *testing.T) {
 	defer server.Close()
 	c := &client{baseURL: server.URL, httpClient: server.Client()}
 
+	dir := t.TempDir()
+	store := configstore.NewStore(dir)
+	if err := store.SaveLocal("dev", &configstore.LocalConfig{Mode: api.ModePTY}); err != nil {
+		t.Fatal(err)
+	}
+
 	out := captureStdout(t, func() {
-		if code := cmdStart(c, false, []string{"--name", "dev", "--mode", "pty", "--web"}); code != 0 {
+		if code := cmdStart(c, false, dir, []string{"--name", "dev", "--web"}); code != 0 {
 			t.Fatalf("cmdStart exit = %d", code)
 		}
 	})
@@ -154,7 +165,7 @@ func TestStartWebFlag(t *testing.T) {
 	}
 
 	jsonOut := captureStdout(t, func() {
-		if code := cmdStart(c, true, []string{"--name", "dev", "--mode", "pty", "--web"}); code != 0 {
+		if code := cmdStart(c, true, dir, []string{"--name", "dev", "--web"}); code != 0 {
 			t.Fatalf("cmdStart --json exit = %d", code)
 		}
 	})
@@ -178,8 +189,14 @@ func TestStartWithoutWebFlag(t *testing.T) {
 	defer server.Close()
 	c := &client{baseURL: server.URL, httpClient: server.Client()}
 
+	dir := t.TempDir()
+	store := configstore.NewStore(dir)
+	if err := store.SaveLocal("dev", &configstore.LocalConfig{Mode: api.ModePTY}); err != nil {
+		t.Fatal(err)
+	}
+
 	out := captureStdout(t, func() {
-		if code := cmdStart(c, false, []string{"--name", "dev"}); code != 0 {
+		if code := cmdStart(c, false, dir, []string{"--name", "dev"}); code != 0 {
 			t.Fatalf("cmdStart exit = %d", code)
 		}
 	})
@@ -188,5 +205,51 @@ func TestStartWithoutWebFlag(t *testing.T) {
 	}
 	if strings.Contains(out, "web terminal:") {
 		t.Fatalf("default start printed a web URL: %q", out)
+	}
+}
+
+// TestStartResolvesConfig verifies cmdStart loads a saved config by name and
+// fills the create request accordingly: local configs carry command/args/mode,
+// SSH configs carry ssh_config and a pty mode.
+func TestStartResolvesConfig(t *testing.T) {
+	var got api.CreateSessionRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(api.Session{ID: "abc123abc123", Mode: got.Mode, SSHConfig: got.SSHConfig})
+	}))
+	defer server.Close()
+	c := &client{baseURL: server.URL, httpClient: server.Client()}
+	dir := t.TempDir()
+	store := configstore.NewStore(dir)
+	if err := store.SaveLocal("repl", &configstore.LocalConfig{Command: "python3", Mode: api.ModePipe}); err != nil {
+		t.Fatal(err)
+	}
+	if code := cmdStart(c, false, dir, []string{"--name", "repl"}); code != 0 {
+		t.Fatalf("local start exit = %d", code)
+	}
+	if got.Command != "python3" || got.Mode != api.ModePipe || got.Name != "" {
+		t.Fatalf("local request = %+v", got)
+	}
+
+	if err := store.SaveSSH("prod", &sshconfig.Profile{Host: "example.com", User: "deploy"}); err != nil {
+		t.Fatal(err)
+	}
+	if code := cmdStart(c, false, dir, []string{"--name", "prod"}); code != 0 {
+		t.Fatalf("ssh start exit = %d", code)
+	}
+	if got.SSHConfig != "prod" || got.Mode != api.ModePTY {
+		t.Fatalf("ssh request = %+v", got)
+	}
+}
+
+// TestStartUnknownConfig asserts start fails fast (exit 2) before any daemon
+// call when the named config does not exist.
+func TestStartUnknownConfig(t *testing.T) {
+	c := &client{baseURL: "http://127.0.0.1:1", httpClient: &http.Client{}}
+	dir := t.TempDir()
+	if code := cmdStart(c, false, dir, []string{"--name", "missing"}); code != 2 {
+		t.Fatalf("start missing config exit = %d, want 2", code)
 	}
 }

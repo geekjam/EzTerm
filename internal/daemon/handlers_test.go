@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"ezterm/internal/api"
+	"ezterm/internal/configstore"
 	"ezterm/internal/message"
 	"ezterm/internal/session"
-	"ezterm/internal/sshconfig"
 	"ezterm/internal/storage"
 	"github.com/coder/websocket"
 )
@@ -64,9 +64,9 @@ func testHandler(t *testing.T) (*httptest.Server, *session.Manager) {
 		t.Fatal(err)
 	}
 	msgMgr := message.NewManager(store)
-	sshStore := sshconfig.NewStore(dir)
-	mgr := session.NewManager(store, msgMgr, sshStore)
-	server := httptest.NewServer(NewHandler(mgr, sshStore))
+	cfgStore := configstore.NewStore(dir)
+	mgr := session.NewManager(store, msgMgr, cfgStore)
+	server := httptest.NewServer(NewHandler(mgr, cfgStore))
 	t.Cleanup(server.Close)
 	return server, mgr
 }
@@ -565,12 +565,12 @@ func TestReaderAndSSHConfigEndpoints(t *testing.T) {
 		t.Fatalf("reader status=%d reader=%+v", resp.StatusCode, reader)
 	}
 
-	var profiles struct {
-		Profiles []api.SSHProfileSummary `json:"ssh_configs"`
+	var configs struct {
+		Configs []api.ConfigSummary `json:"configs"`
 	}
-	resp = doJSON(t, client, http.MethodGet, server.URL+"/api/ssh-configs", nil, &profiles)
-	if resp.StatusCode != http.StatusOK || len(profiles.Profiles) != 0 {
-		t.Fatalf("SSH config status=%d profiles=%+v", resp.StatusCode, profiles.Profiles)
+	resp = doJSON(t, client, http.MethodGet, server.URL+"/api/configs", nil, &configs)
+	if resp.StatusCode != http.StatusOK || len(configs.Configs) != 0 {
+		t.Fatalf("config list status=%d configs=%+v", resp.StatusCode, configs.Configs)
 	}
 
 	// Ensure the test manager has the same session the API created and clean it up.

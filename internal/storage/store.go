@@ -42,8 +42,8 @@ func (s *Store) Init() error {
 	if err := os.MkdirAll(filepath.Join(s.dataDir, "messages"), 0o700); err != nil {
 		return fmt.Errorf("create messages directory: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Join(s.dataDir, "ssh_configs"), 0o700); err != nil {
-		return fmt.Errorf("create SSH config directory: %w", err)
+	if err := os.MkdirAll(filepath.Join(s.dataDir, "configs"), 0o700); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
 	}
 	path := filepath.Join(s.dataDir, "sessions.json")
 	if _, err := os.Stat(path); err != nil {

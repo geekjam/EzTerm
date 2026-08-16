@@ -53,9 +53,11 @@ internal/
 │   ├── spawn.go                  # Auto-spawn daemon (probe /health → background launch)
 │   ├── spawn_{windows,unix}.go   # Platform-specific process detachment
 │   ├── env.go                    # ~/.ezterm resolution and ~ expansion
-│   └── sshconfig_cmd.go          # ssh-config init/list local management
+│   └── config_cmd.go             # config local/ssh/list/delete local management
 ├── config/
 │   └── config.go                 # Defaults, validation, ~ expansion
+├── configstore/
+│   └── store.go                  # Unified local/ssh config storage (configs/local.json + ssh.json)
 ├── daemon/
 │   ├── daemon.go                 # HTTP server, flags, graceful shutdown
 │   ├── handlers.go               # REST/JSON handlers, query parsing, attach stream
@@ -74,15 +76,14 @@ internal/
 ├── sshclient/
 │   └── client.go                 # SSH dial, PTY request, stream bridging
 ├── sshconfig/
-│   ├── config.go                 # Profile model and validation
-│   └── store.go                  # Profile persistence (data-dir/ssh_configs)
+│   └── config.go                 # Profile model and validation (storage lives in configstore)
 └── storage/
     └── store.go                  # Atomic JSON persistence (temp + fsync + rename)
 ```
 
-Dependency direction (no cycles): `cli` → `daemon`/`sshconfig`;
-`daemon` → `session`/`sshconfig`/`message`/`storage`;
-`session` → `buffer`/`ansi`/`message`/`storage`/`sshclient`/`sshconfig`.
+Dependency direction (no cycles): `cli` → `daemon`/`configstore`/`sshconfig`;
+`daemon` → `session`/`configstore`/`message`/`storage`;
+`session` → `buffer`/`ansi`/`message`/`storage`/`sshclient`/`configstore`.
 
 Attach flow: the CLI `attach` command opens `GET /api/sessions/{id}/attach`
 (daemon streams the raw PTY byte stream, replaying the retained screen first),
@@ -107,6 +108,8 @@ in PTY mode.
 ├── messages/<session_id>/
 │   ├── index.json                # Message index
 │   └── messages/<msg_id>.json    # Individual message (input/output/system)
-├── ssh_configs/<name>/config.json # SSH profiles (mode 0600)
+├── configs/
+│   ├── local.json                # Local launch configs (map, mode 0600)
+│   └── ssh.json                  # SSH launch configs (map, mode 0600)
 └── ezterm.log                   # Auto-spawned daemon log
 ```

@@ -32,3 +32,11 @@ func expandTilde(path string) (string, error) {
 	}
 	return filepath.Clean(path), nil
 }
+
+// expandDataDir resolves the CLI's data directory.
+func expandDataDir(path string) (string, error) {
+	if path == "" {
+		return defaultDataDir()
+	}
+	return expandTilde(path)
+}

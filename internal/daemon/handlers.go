@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"ezterm/internal/api"
+	"ezterm/internal/configstore"
 	"ezterm/internal/session"
-	"ezterm/internal/sshconfig"
 )
 
 // maxBodyBytes caps request bodies to protect the daemon.
@@ -24,7 +24,7 @@ const maxReadTimeout = 300 * time.Second
 // Handler serves the ezterm HTTP API and the embedded Web terminal.
 type Handler struct {
 	mgr      *session.Manager
-	sshStore *sshconfig.Store
+	cfgStore *configstore.Store
 	host     string
 	port     int
 	mux      *http.ServeMux
@@ -32,14 +32,14 @@ type Handler struct {
 
 // NewHandler builds the HTTP API router with the documented local defaults.
 // NewHandlerWithAddress is used by the daemon when its bind address is known.
-func NewHandler(mgr *session.Manager, sshStore *sshconfig.Store) http.Handler {
-	return NewHandlerWithAddress(mgr, sshStore, "127.0.0.1", 18766)
+func NewHandler(mgr *session.Manager, cfgStore *configstore.Store) http.Handler {
+	return NewHandlerWithAddress(mgr, cfgStore, "127.0.0.1", 18766)
 }
 
 // NewHandlerWithAddress builds the HTTP API router and advertises Web URLs
 // using the daemon's bind address.
-func NewHandlerWithAddress(mgr *session.Manager, sshStore *sshconfig.Store, host string, port int) http.Handler {
-	h := &Handler{mgr: mgr, sshStore: sshStore, host: host, port: port, mux: http.NewServeMux()}
+func NewHandlerWithAddress(mgr *session.Manager, cfgStore *configstore.Store, host string, port int) http.Handler {
+	h := &Handler{mgr: mgr, cfgStore: cfgStore, host: host, port: port, mux: http.NewServeMux()}
 
 	h.mux.HandleFunc("GET /health", h.handleHealth)
 	h.mux.HandleFunc("GET /api/sessions", h.handleListSessions)
@@ -52,7 +52,7 @@ func NewHandlerWithAddress(mgr *session.Manager, sshStore *sshconfig.Store, host
 	h.mux.HandleFunc("POST /api/sessions/{id}/terminate", h.handleTerminate)
 	h.mux.HandleFunc("DELETE /api/sessions/{id}", h.handleDelete)
 	h.mux.HandleFunc("POST /api/sessions/{id}/resize", h.handleResize)
-	h.mux.HandleFunc("GET /api/ssh-configs", h.handleListSSHConfigs)
+	h.mux.HandleFunc("GET /api/configs", h.handleListConfigs)
 	h.mux.HandleFunc("GET /web/{id}", h.handleWebPage)
 	h.mux.HandleFunc("GET /web/app.js", h.handleWebApp)
 	h.mux.HandleFunc("GET /web/style.css", h.handleWebStyle)
@@ -318,13 +318,13 @@ func (h *Handler) handleResize(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.Info())
 }
 
-func (h *Handler) handleListSSHConfigs(w http.ResponseWriter, r *http.Request) {
-	profiles, err := h.sshStore.List()
+func (h *Handler) handleListConfigs(w http.ResponseWriter, r *http.Request) {
+	configs, err := h.cfgStore.ListAll()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list SSH configs: %v", err)
+		writeError(w, http.StatusInternalServerError, "list configs: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ssh_configs": profiles})
+	writeJSON(w, http.StatusOK, map[string]any{"configs": configs})
 }
 
 // --- helpers for query parsing ---

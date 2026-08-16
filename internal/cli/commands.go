@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ezterm/internal/api"
+	"ezterm/internal/configstore"
 )
 
 // knownFlag reports whether name is a flag the given FlagSet defines.
@@ -44,7 +45,7 @@ func reorderPositionals(fs *flag.FlagSet, args []string) []string {
 		case len(arg) > 1 && arg[0] == '-':
 			// A self-contained value (--flag=value) needs no consumption. A bare
 			// flag that takes a value consumes the next argument, even if that
-			// argument looks like a flag (e.g. `start --command sh --args -c`).
+			// argument looks like a flag (e.g. `config local --command sh --args -c`).
 			reordered = append(reordered, arg)
 			if !strings.Contains(arg, "=") && knownFlag(fs, arg) && flagTakesValue(fs, arg) && i+1 < len(args) {
 				reordered = append(reordered, args[i+1])
@@ -102,17 +103,12 @@ func parseCommandArgs(fs *flag.FlagSet, args []string) []string {
 	return positionals
 }
 
-func cmdStart(c *client, jsonOut bool, args []string) int {
+func cmdStart(c *client, jsonOut bool, dataDir string, args []string) int {
 	fs := flag.NewFlagSet("ezterm start", flag.ContinueOnError)
-	command := fs.String("command", "", "command to run (executable or shell when empty)")
-	var cmdArgs stringList
-	fs.Var(&cmdArgs, "args", "command argument (repeatable; a value may begin with '-')")
-	mode := fs.String("mode", "pty", "session mode: pty or pipe")
-	name := fs.String("name", "", "session name (default session-<id>)")
+	name := fs.String("name", "", "saved config name to start")
+	web := fs.Bool("web", false, "enable the Web terminal page (PTY mode only)")
 	rows := fs.Int("rows", 24, "initial PTY rows")
 	cols := fs.Int("cols", 80, "initial PTY cols")
-	sshConfig := fs.String("ssh-config", "", "SSH profile name (\"internal\" = local host)")
-	web := fs.Bool("web", false, "enable the Web terminal page (PTY mode only)")
 	dialTimeout := fs.Int("timeout", 15, "dial timeout in seconds for remote sessions")
 	if parseCommandArgs(fs, args) == nil {
 		return 2
@@ -121,18 +117,34 @@ func cmdStart(c *client, jsonOut bool, args []string) int {
 		printError(jsonOut, "unexpected arguments: %v", fs.Args())
 		return 2
 	}
+	if strings.TrimSpace(*name) == "" {
+		printError(jsonOut, "--name is required (the saved config to start)")
+		return 2
+	}
 
-	session, err := c.create(api.CreateSessionRequest{
-		Command:            *command,
-		Args:               cmdArgs,
-		Mode:               api.Mode(*mode),
-		Name:               *name,
+	store := configstore.NewStore(dataDir)
+	resolved, err := store.Resolve(*name)
+	if err != nil {
+		printError(jsonOut, "start session: %v", err)
+		return 2
+	}
+	req := api.CreateSessionRequest{
 		Rows:               *rows,
 		Cols:               *cols,
-		SSHConfig:          *sshConfig,
 		Web:                *web,
 		DialTimeoutSeconds: *dialTimeout,
-	}, time.Duration(*dialTimeout+10)*time.Second)
+	}
+	switch resolved.Type {
+	case configstore.TypeLocal:
+		req.Command = resolved.Local.Command
+		req.Args = resolved.Local.Args
+		req.Mode = resolved.Local.Mode
+	case configstore.TypeSSH:
+		req.SSHConfig = *name
+		req.Mode = api.ModePTY
+	}
+
+	session, err := c.create(req, time.Duration(*dialTimeout+10)*time.Second)
 	if err != nil {
 		printError(jsonOut, "start session: %v", err)
 		return exitCodeFor(err)

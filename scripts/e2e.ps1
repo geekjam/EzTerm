@@ -42,8 +42,9 @@ try {
 
 # ---- pipe session ----
 Say "pipe session: start / read"
-$startJson = & $Bin --port $Port --data-dir $DataDir --json start `
-    --command cmd --args /c --args echo --args E2E-PIPE-MARKER --mode pipe --name e2e-pipe | Out-String
+& $Bin --data-dir $DataDir config local --name e2e-pipe --command cmd --args /c --args echo --args E2E-PIPE-MARKER --mode pipe | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "config local (pipe) failed" }
+$startJson = & $Bin --port $Port --data-dir $DataDir --json start --name e2e-pipe | Out-String
 $sid = ($startJson | ConvertFrom-Json).session.id
 if (-not $sid) { throw "could not extract session id from: $startJson" }
 Ok "session id extracted"
@@ -52,7 +53,9 @@ if ($readOut -match "E2E-PIPE-MARKER") { Ok "pipe output captured" } else { Fail
 
 # ---- PTY session ----
 Say "PTY session: interactive input round-trip"
-$ptyStart = & $Bin --port $Port --data-dir $DataDir --json start --mode pty --name e2e-pty | Out-String
+& $Bin --data-dir $DataDir config local --name e2e-pty --mode pty | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "config local (pty) failed" }
+$ptyStart = & $Bin --port $Port --data-dir $DataDir --json start --name e2e-pty | Out-String
 $psid = ($ptyStart | ConvertFrom-Json).session.id
 if (-not $psid) { throw "could not extract PTY session id" }
 & $Bin --port $Port --data-dir $DataDir send $psid --text 'echo E2E-PTY-MARKER' --press-enter | Out-Null
@@ -67,7 +70,9 @@ if ($ptyOut -match "E2E-PTY-MARKER") { Ok "pty echoed command appears in output"
 
 # ---- attach ----
 Say "attach: replay final screen after session end"
-$attachStart = & $Bin --port $Port --data-dir $DataDir --json start --mode pty --name e2e-attach | Out-String
+& $Bin --data-dir $DataDir config local --name e2e-attach --mode pty | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "config local (attach) failed" }
+$attachStart = & $Bin --port $Port --data-dir $DataDir --json start --name e2e-attach | Out-String
 $attachSid = ($attachStart | ConvertFrom-Json).session.id
 if (-not $attachSid) { throw "could not extract attach session id" }
 Ok "attach session id extracted"
@@ -108,14 +113,18 @@ if ($LASTEXITCODE -eq 1) { Ok "missing session exits 1" } else { Fail "missing s
 & $Bin --port $Port --data-dir $DataDir attach no-such-session 2>$null | Out-Null
 if ($LASTEXITCODE -eq 1) { Ok "attach to unknown session exits 1" } else { Fail "attach unknown exit = $LASTEXITCODE, want 1" }
 
-# ---- ssh-config ----
-Say "ssh-config management"
-& $Bin --data-dir $DataDir ssh-config init e2eprofile --host 127.0.0.1 --user nobody --auth password | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "ssh-config init failed" }
-$sshList = & $Bin --data-dir $DataDir ssh-config list | Out-String
-if ($sshList -match "e2eprofile") { Ok "profile listed" } else { Fail "profile missing: $sshList" }
-& $Bin --port $Port --data-dir $DataDir start --ssh-config e2eprofile --command whoami --timeout 2 2>$null | Out-Null
+# ---- config ----
+Say "config management"
+& $Bin --data-dir $DataDir config ssh --name e2eprofile --host 127.0.0.1 --user nobody --auth key --key-path C:\nonexistent\e2e_key | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "config ssh failed" }
+$sshList = & $Bin --data-dir $DataDir config list | Out-String
+if ($sshList -match "e2eprofile") { Ok "ssh config listed" } else { Fail "ssh config missing: $sshList" }
+& $Bin --data-dir $DataDir config local --name e2elocal --command whoami --mode pipe | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "config local failed" }
+& $Bin --port $Port --data-dir $DataDir start --name e2eprofile --timeout 2 2>$null | Out-Null
 if ($LASTEXITCODE -eq 2) { Ok "unreachable SSH host fails cleanly (exit 2)" } else { Fail "ssh failure exit = $LASTEXITCODE, want 2" }
+& $Bin --data-dir $DataDir config delete --name e2eprofile | Out-Null
+& $Bin --data-dir $DataDir config delete --name e2elocal | Out-Null
 
 # ---- cleanup ----
 & taskkill /IM ezterm.exe /F 2>$null | Out-Null
