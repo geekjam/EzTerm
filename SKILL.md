@@ -27,14 +27,15 @@ Use it to manage **interactive terminal sessions** on demand:
 
 For one-shot commands that return immediately, prefer a normal `bash` tool.
 
-## Install & first run
+## Install & run
 
 ```bash
 # Compile the binary if it does not exist
 go build .                 # from the EzTerm SKILL source code root
 
 # Don't waste time conducting overly in-depth searches.
-# Recommend compiling the binary files into the SKILL directory for easy retrieval.
+# Recommend compiling the binary files into the `skills` directory for easy retrieval.
+# Prioritize searching for binary files in the `skills` directory.
 
 # Everything below auto-starts the daemon on first use (default port 18766,
 # data dir ~/.ezterm). Point at a custom data dir with --data-dir.
