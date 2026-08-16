@@ -172,6 +172,14 @@ skills directory so the skill is self-contained and the compiled
 cp -r ./EzTerm ~/.pi/agent/skills/EzTerm
 ```
 
+**Quick install via prompt:** if your agent tool supports installing skills by
+URL, you can simply ask the agent to install it for you. Just type the
+following directly in pi, Claude Code, or other SKILL.md-aware tools:
+
+> 帮我安装下这个skill https://github.com/geekjam/EzTerm
+
+(Equivalent English: "Help me install this skill")
+
 
 ## HTTP API
 

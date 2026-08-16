@@ -141,6 +141,10 @@ ezterm --json read <id> --timeout 0
 cp -r ./EzTerm ~/.pi/agent/skills/EzTerm
 ```
 
+**一句话安装**：如果你的代理工具支持按 URL 安装 Skill，直接在 pi、Claude Code 等支持 SKILL.md 的工具里输入以下内容即可：
+
+> 帮我安装下这个skill https://github.com/geekjam/EzTerm
+
 ## HTTP API
 
 daemon 提供小型 JSON API（`/health`、`/api/sessions`、`/api/sessions/{id}/output`、`/api/configs` 等），以及按需开启的 Web 终端页面和 WebSocket：`/web/{id}`、`/web/{id}/ws`，另有配置管理页面 `/config`。详见 [`API.md`](./API.md)（中文版 [`API.zh.md`](./API.zh.md)）。
