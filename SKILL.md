@@ -17,11 +17,13 @@ command line that agents can drive. The daemon auto-starts on first use.
 
 ## When to use this skill
 
-- A command needs **input after launch** (REPL, `npm create`, `ssh`, `mysql`,
-  `python -i`, debuggers, installers with prompts).
-- You need to **keep a process alive between turns** and read its output later.
-- You need an **interactive shell on a remote host** without writing one-shot
-  SSH command lines.
+Use it to manage **interactive terminal sessions** on demand:
+
+- **Local terminal sessions** — run and control a local REPL, shell, debugger,
+  installer, or any command that needs input after launch and stays alive
+  across turns.
+- **Remote SSH sessions** — open and keep an interactive shell on a remote
+  host without writing one-shot SSH command lines.
 
 For one-shot commands that return immediately, prefer a normal `bash` tool.
 
@@ -215,45 +217,6 @@ ezterm send <id> --press-key left               # arrow key
   undefined combinations (`ctrl+1`, `shift+1`) print a clear error and exit
   with code 2.
 
-## Credential safety — read this before using SSH
-
-The default data directory `~/.ezterm` (or any custom `--data-dir`) contains
-**sensitive material**: SSH configs with **plaintext passwords** and private
-key paths (`configs/ssh.json`, mode 0600), session transcripts
-that may include password prompts and typed secrets (`messages/`), and a daemon
-log. The web config page never returns stored passwords, but anyone who can
-reach an exposed daemon can modify configurations. Treat every file there as a
-secret.
-
-**Never** do any of the following:
-
-- **Do not read, `cat`, `type`, `head`, `tail`, or open any file under
-  `~/.ezterm`** — not `configs/`, not `sessions.json`, not `messages/`,
-  not `ezterm.log`. This includes listing the directory with `ls`/`find`.
-- **Do not print, paste, quote, or repeat passwords or private keys** in tool
-  calls, replies, logs, diffs, or any file.
-- **Do not repeat credential-looking output.** If a `read` returns a password
-  prompt or a secret that was typed into a session (PTY echo), redact it —
-  never quote it back.
-- **Never pass a password through `send` into a session** unless the user
-  explicitly asked; the typed password would then be stored in the transcript
-  under `messages/`.
-- **Never commit credentials to the repository** or include them in any
-  generated file or patch.
-
-Instead:
-
-- Use `ezterm config list` (non-secret summaries) and `ezterm list` —
-  never raw file reads.
-- Reference configs by **name only**: `ezterm start --name prod`.
-  The daemon loads SSH credentials itself.
-- To create or fix a config, open the web configuration page with
-  `ezterm config web --open` and have the user enter credentials there in the
-  browser; this keeps passwords off the command line and out of transcripts.
-  Do not read the config file afterward. Never pass a password through
-  `config ssh --password ...` yourself unless the user explicitly supplied it,
-  and never echo it later.
-
 ## JSON output
 
 Add `--json` for stable, parseable output (no human decoration):
@@ -291,8 +254,16 @@ Add `--json` for stable, parseable output (no human decoration):
   your first `read`. Reads still return all retained output, then `eof: true`.
 - **Termination** sends a graceful signal, then forces after a short grace;
   `terminate` is idempotent.
-- **Data directory** holds `sessions.json`, `messages/`, and `configs/`
-  (`configs/ssh.json` stores **plaintext passwords**, mode 0600). Never read
-  files under the data dir directly — use `ezterm list` / `ezterm read` /
-  `ezterm config list` — and follow the **Credential safety** rules above.
+- **Credential safety** — `~/.ezterm` (or a custom `--data-dir`) contains
+  plaintext SSH passwords, private key paths, transcripts, and logs; treat it
+  as secret. Never read, list, or open files there, or print, repeat, or commit
+  credentials. Use `ezterm config list`, `ezterm list`, and `ezterm read`
+  instead, and redact any credential-looking output.
+- Create or fix configs with `ezterm config web --open`; have the user enter
+  credentials in the browser so they stay off the command line and out of
+  transcripts. Reference configs by name only (`ezterm start --name prod`);
+  never send passwords to a session or use `config ssh --password ...` unless
+  the user explicitly supplied the password. The web page never returns
+  stored passwords, but an exposed daemon can modify configs.
+- **Data directory** — holds `sessions.json`, `messages/`, and `configs/`.
   Restarting the daemon restores past (finished) sessions as history.
