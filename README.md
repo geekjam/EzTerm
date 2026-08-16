@@ -25,6 +25,14 @@
 and monitor **interactive terminal sessions** — REPLs, shells, installers,
 servers, and remote SSH — across many turns of send-and-read.
 
+## Thanks to termcp
+
+This project's code is referenced from and derived from
+[termcp](https://github.com/open-mcp-ai/termcp). We are grateful for its work.
+If you need the MCP version or a more comprehensive feature set (SFTP, port
+forwarding, etc.), please use the
+[termcp project](https://github.com/open-mcp-ai/termcp).
+
 ## Quick Start
 
 ```bash

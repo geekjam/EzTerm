@@ -24,6 +24,11 @@
 
 `ezterm` 是一个轻量 CLI + daemon，让 AI 代理（以及人类）能够**多轮运行、驱动和监控交互式终端会话**——REPL、shell、安装器、服务器、远程 SSH 等场景，支持跨多轮的发送输入与读取输出。
 
+## 致谢 termcp
+
+本项目代码参考并衍生自 [termcp](https://github.com/open-mcp-ai/termcp)，特此致谢。
+如需 MCP 版本或更全面的功能（如 SFTP、端口转发等），请使用该开源项目：https://github.com/open-mcp-ai/termcp
+
 ## 快速开始
 
 ```bash
