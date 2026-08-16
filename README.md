@@ -176,9 +176,7 @@ cp -r ./EzTerm ~/.pi/agent/skills/EzTerm
 URL, you can simply ask the agent to install it for you. Just type the
 following directly in pi, Claude Code, or other SKILL.md-aware tools:
 
-> 帮我安装下这个skill https://github.com/geekjam/EzTerm
-
-(Equivalent English: "Help me install this skill")
+> Help me install this skill: https://github.com/geekjam/EzTerm
 
 
 ## HTTP API
