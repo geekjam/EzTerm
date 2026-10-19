@@ -27,9 +27,10 @@ humans) run, drive, and monitor **interactive terminal sessions** — REPLs,
 shells, installers, servers, and remote SSH — across many turns of
 send-and-read.
 
-The CLI handles the actual session management; the Skill wraps that CLI so
-SKILL.md-aware tools (pi, Claude Code, and others) can use it out of the box.
-See the [Agent Skill](#agent-skill) section.
+The daemon handles the actual session management over a small JSON HTTP API;
+the Skill drives that API directly, so SKILL.md-aware tools (pi, Claude Code,
+and others) can use it out of the box. The CLI remains available for humans
+and scripts. See the [Agent Skill](#agent-skill) section.
 
 ## Thanks to termcp
 
@@ -161,7 +162,8 @@ ezterm --json read <id> --timeout 0
 
 For agents, `ezterm` ships an [agentskills.io](https://agentskills.io)-compatible
 skill in [`SKILL.md`](./SKILL.md) (usable by pi, Claude Code, and other
-SKILL.md-aware tools).
+SKILL.md-aware tools). The skill talks to the daemon over the HTTP API
+described in [`API.md`](./API.md).
 
 **Recommended install:** copy the whole repository directory into your tool's
 skills directory so the skill is self-contained and the compiled

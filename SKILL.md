@@ -1,247 +1,182 @@
 ---
 name: ezterm
 description: >-
-  Use when you need to run, control, and interact with long-running or
-  interactive processes: REPLs, interactive installers, servers, terminal
-  programs, or remote SSH shells. ezterm manages terminal sessions through a
-  small CLI and background daemon, supporting start / send / read / attach / terminate /
-  delete / list operations, SSH profiles, and machine-readable --json output.
-  Never reads or exposes stored SSH credentials (passwords or private keys).
+  Use when you need to connect to a specified server or terminal — start,
+  drive, and read interactive sessions (REPLs, installers, servers, remote
+  SSH shells) through the ezterm HTTP API on 127.0.0.1:18766. 
 ---
 
-# EzTerm — interactive terminal sessions for agents
+# EzTerm — interactive terminal sessions over HTTP
 
-`ezterm` starts interactive processes (locally or over SSH) and lets you send
-input and read output across multiple turns — like a real terminal, but from a
-command line that agents can drive. The daemon auto-starts on first use.
+`ezterm` runs interactive processes (locally or over SSH) as **sessions** and
+lets you send input and read new output across multiple turns — like a real
+terminal, but driven entirely over HTTP. Every response is JSON.
 
 ## When to use this skill
 
-Use it to manage **interactive terminal sessions** on demand:
+Use it to connect to a specified server or terminal and start, drive, and read
+interactive sessions — REPLs, installers, servers, remote SSH shells. For
+one-shot commands, use the local terminal tool.
 
-- **Local terminal sessions** — run and control a local REPL, shell, debugger,
-  installer, or any command that needs input after launch and stays alive
-  across turns.
-- **Remote SSH sessions** — open and keep an interactive shell on a remote
-  host without writing one-shot SSH command lines.
-
-For one-shot commands that return immediately, prefer a normal `bash` tool.
-
-## Install & run
+## Build the binary
 
 ```bash
-# Compile the binary if it does not exist
-go build .                 # from the EzTerm SKILL source code root
-
-# Don't waste time conducting overly in-depth searches.
-# Recommend compiling the binary files into the `skills` directory for easy retrieval.
-# Prioritize searching for binary files in the `skills` directory.
-
-# Everything below auto-starts the daemon on first use (default port 18766,
-# data dir ~/.ezterm). Point at a custom data dir with --data-dir.
+go build .        # from the EzTerm source root -> ./ezterm (ezterm.exe on Windows)
 ```
 
-## Command reference
+The same binary serves the HTTP API, the Web terminal, and the config page.
+**Prefer an existing compiled binary**: look in the `skills` directory (the
+binary is normally placed next to `SKILL.md`) before compiling.
 
-Global flags (can appear before or after the subcommand):
-`--port <n>` (default 18766), `--data-dir <dir>` (default `~/.ezterm`),
-`--json` (machine-readable output), `--log-level <debug|info|warn|error>`.
+## Start the daemon
 
-| Command | Purpose |
-|---|---|
-| `ezterm start --name <config> [--web] [--rows 24] [--cols 80] [--timeout s]` | Start a session from a saved config (created with `config local/ssh`). Default mode is from the config; local pipe configs keep their mode. `--web` exposes a local browser terminal (PTY only) and defaults off. |
-| `ezterm send <id> --text <text> [--press-enter]` or `ezterm send <id> --press-key <key>` | Write input to a session. Use `--press-key` to send one terminal key/combination such as `ctrl+c`, `enter`, or `f5` (see Press-key input). |
-| `ezterm read <id> [--reader 0] [--timeout 30] [--raw] [--max-bytes n]` | Read new output since the last read. Blocks up to `--timeout` seconds (0 = non-blocking). Strips ANSI unless `--raw`. Returns EOF when the process exited and output is drained. |
-| `ezterm attach <id>` | Enter a running PTY in raw mode. Output is rendered live; keystrokes and resize are forwarded; `Ctrl+]` detaches without stopping the session. |
-| `ezterm terminate <id>` | Stop a session (graceful, then force). |
-| `ezterm delete <id>` | Remove a finished session from the list. |
-| `ezterm list` | List sessions (ID / name / mode / status / ssh / exit / command). |
-| `ezterm config local --name <name> [--command <cmd>] [--args a] [--mode pty\|pipe]` | Create/update a local launch config. `--name` is the config name (also selected by `start --name`). `--command` empty = default shell. `--mode` defaults to `pty`. |
-| `ezterm config ssh --name <name> --host <host> --user <u> --auth password --password <p> [--port 22] [--shell <s>]` or `... --auth key --key-path <path>` | Create/update an SSH launch config; choose exactly one auth mode and provide its credential parameter. |
-| `ezterm config list [--type local\|ssh]` | List saved configs. |
-| `ezterm config delete --name <name>` | Delete a saved config by name. |
-| `ezterm config web [--open]` | Ensure the daemon is running and print the dark config page URL; `--open` launches the default browser. |
-| `ezterm health` / `ezterm version` | Probe the daemon / print version. |
-
-Exit codes: `0` success, `1` session not found, `2` other errors (daemon
-unreachable, invalid input, conflicts).
-
-## Typical workflow
+The daemon must be running before any call. Probe first, start only if it fails:
 
 ```bash
-# 1. Define a local config and start it (recommend --web for a browser view).
-ezterm config local --name dev --command bash --mode pty
-# → local config "dev" saved
-ezterm start --name dev --web
-# → session a1b2c3d45678 created
-#   web terminal: http://127.0.0.1:18766/web/a1b2c3d45678
-
-# Optional: manage saved configs in the browser.
-ezterm config web --open
-# → configuration page: http://127.0.0.1:18766/config
-# The page supports local/SSH create, edit, and delete. Stored SSH passwords
-# are write-only and are never returned to the browser.
-
-# 2. Send a command.
-ezterm send a1b2c3d45678 --text 'python -i' --press-enter
-
-# 3. Read output (block up to 30s for new output).
-ezterm read a1b2c3d45678 --timeout 30
-# → Python 3.12.5 ... >>>
-
-# 4. Keep interacting across turns.
-ezterm send a1b2c3d45678 --text '2 + 2' --press-enter
-ezterm read a1b2c3d45678 --timeout 10
-# → 4
-
-# 5. Clean up.
-ezterm terminate a1b2c3d45678
-ezterm delete a1b2c3d45678
+curl -s http://127.0.0.1:18766/health          # -> {"status":"ok"}
 ```
-
-## Web configuration page
-
-Use `config web` when a human needs to manage saved local and SSH launch
-configs without typing the full CLI form. It ensures the daemon is running and
-prints a dark-themed browser page consistent with the Web terminal:
 
 ```bash
-ezterm config web --open
-# → configuration page: http://127.0.0.1:18766/config
+# Bash / Git Bash / macOS / Linux — start detached (use ./ezterm.exe on Windows)
+(nohup ./ezterm daemon >/dev/null 2>&1 &)
 ```
 
-The page supports list/create/edit/delete through `/api/configs`. SSH passwords
-are write-only: existing passwords appear only as a masked placeholder, are
-never returned by `GET /api/configs/{name}`, and remain in the mode-0600 config
-store. Leaving the password field empty while editing a password-auth profile
-preserves the existing password.
-
-The page has the same access boundary as the daemon and Web terminal: by
-default it is local-only on `127.0.0.1`, with no authentication. Do not expose
-the daemon with `--host` on an untrusted network because that also exposes
-configuration CRUD and the ability to write SSH credentials.
-
-## Web terminal
-
-When connecting to a server or starting a long-running interactive session,
-**recommend enabling a Web terminal** (`start --web`). Tell the user it opens a
-browser view with live output and interaction, and ask whether they want it
-enabled unless their workflow clearly doesn't need it. It gives a browser tab
-that behaves like `attach` (live output, input, paste, resize) without
-holding a terminal open.
-
-```bash
-# Start a PTY session with a browser view.
-ezterm config local --name dev --mode pty
-ezterm start --name dev --web
-# → session a1b2c3d45678 created
-#   web terminal: http://127.0.0.1:18766/web/a1b2c3d45678
-
-# Open the printed URL in a browser to watch and take over.
-# Closing the tab does not stop the session; it keeps running in the background.
+```powershell
+# PowerShell / Windows
+Start-Process -WindowStyle Hidden ezterm.exe -ArgumentList 'daemon'
 ```
 
-- **Local-only** — the daemon binds to `127.0.0.1` by default, so the URL is
-  only reachable from the same machine. No authentication is added.
-- **PTY only** — `--web` with `--mode pipe` returns an error.
-- **Opt-in per session** — only sessions started with `--web` are exposed;
-  existing sessions and sessions without this flag are unchanged. Prefer
-  starting server connections and interactive sessions with `--web`.
-  `start --web` prints the URL, and `--json` returns it in the session's
-  `web_url` field.
-- **Interaction** — the browser page uses xterm.js from a CDN (needs network on
-  the machine opening it). There is no `Ctrl+]` detach in the browser; just
-  close or switch tabs, and reconnect whenever you like. The session keeps
-  running either way.
+Default bind `127.0.0.1:18766`, data dir `~/.ezterm`; both are fixed at daemon
+start (`daemon --port <n> --data-dir <dir>`) and cannot be changed over HTTP.
+Request bodies are JSON (`Content-Type: application/json`, max 1 MiB). Errors
+are `{"error":"..."}` with the matching status code.
 
-For non-interactive one-shot output use `--mode pipe` to avoid terminal echo:
+## Endpoints
 
-```bash
-ezterm config local --name one-shot --command sh --args -c --args 'echo hello' --mode pipe
-ezterm start --name one-shot
-ezterm read <id> --timeout 5
-# → hello
+Notation: `?a=1&b=2` = query · `{...}` = JSON body · `?` suffix = optional ·
+`->` = success response.
+
+### health
+
+```yaml
+GET /health -> {status:"ok"}
 ```
 
-## Press-key input
+### create session
 
-Use `send --press-key` to send a single terminal key or combination instead of
-typed text — for example to send Ctrl+C to a REPL, navigate a TUI menu, or
-press a function key. Each invocation sends exactly one key and never appends
-a newline.
-
-```bash
-ezterm send <id> --press-key ctrl+c            # interrupt (C0 byte 0x03)
-ezterm send <id> --press-key enter             # carriage return (CR), no newline
-ezterm send <id> --press-key ctrl+shift+up     # modifier combination
-ezterm send <id> --press-key f5                 # function key
-ezterm send <id> --press-key left               # arrow key
+```yaml
+# local: command/args/mode | remote: ssh_config:"<profile>", command empty = profile default shell
+# mode defaults to pty ; web:true (PTY only) fills Session.web_url ; 400 = create failed, 409 = web+pipe
+POST /api/sessions {command?,args?,mode?,name?,rows?,cols?,ssh_config?,web?,dial_timeout_seconds?} -> 201 Session
 ```
 
-- **Key names** — lowercase: `enter`, `tab`, `esc`, `space`, `backspace`,
-  `delete`, `insert`, `home`, `end`, `pageup`, `pagedown`,
-  `up`/`down`/`left`/`right`, `f1`–`f12`, or a plain single character
-  (`a`, `1`, `?`). Names and modifiers are case-insensitive.
-- **Modifiers** — combine with `+`: `ctrl`, `alt`, `shift` (`ctrl+c`,
-  `ctrl+shift+up`, `alt+left`). `ctrl`+letter sends the C0 control byte;
-  `alt` wraps the key with an ESC prefix; `ctrl`/`shift` on navigation and
-  function keys send xterm modified CSI sequences (`ctrl+shift+up` →
-  `ESC[1;6A`).
-- **Exclusive** — `--press-key` conflicts with `--text` and `--press-enter`
-  (exit code 2). It never appends a newline; `enter` sends CR (0x0D).
-- **Both modes** — works with PTY and pipe sessions; the effect is chosen by
-  the receiving program.
-- Unknown keys (`foo`, `f13`), duplicate modifiers (`ctrl+ctrl`), or
-  undefined combinations (`ctrl+1`, `shift+1`) print a clear error and exit
-  with code 2.
+### list sessions
 
-## JSON output
-
-Add `--json` for stable, parseable output (no human decoration):
-
-```json
-{"session": {"id": "a1b2c3d45678", "name": "dev", "mode": "pty", "status": "running",
- "command": "", "args": null, "ssh_config": "", "web_url": "", "pid": 1234, "rows": 24, "cols": 80,
- "created_at": "2026-08-02T10:00:00Z", "updated_at": "2026-08-02T10:00:00Z", "finished_at": null}}
-{"data": "hello\n", "eof": false}
-{"sessions": [...]}
-{"error": "..."}
+```yaml
+GET /api/sessions -> {sessions:[Session]}
 ```
 
-## Notes & pitfalls
+### get session
 
-- **PTY mode echoes input** — what you `send` appears in `read` output; strip it
-  mentally or use `--mode pipe` for clean capture.
-- **First `read` replays from the start** of the session (prompt, banner).
-  Subsequent reads return only new output. Use `--reader` for independent
-  cursors when consuming output from multiple places.
-- **Blocking reads** — `read` without `--timeout 0` blocks until output arrives
-  or the timeout expires. Prefer short timeouts and poll.
-- **ANSI escapes are stripped** by default for clean text; keep them with
-  `--raw` if you must render a real terminal screen.
-- **Attach is PTY-only** — pipe sessions return a conflict error. Multiple
-  attach clients share one PTY screen and receive the same output. `attach`
-  always keeps ANSI bytes because it renders the actual PTY screen.
-- **Web terminal is PTY-only and opt-in** — `--web` is enabled only for the
-  session it was passed to and only in PTY mode; the URL is local-only and
-  closing the tab leaves the session running.
-- **`--press-key` sends one key only** — one key/combination per invocation,
-  no trailing newline, mutually exclusive with `--text` and `--press-enter`;
-  see Press-key input for the key names and encodings.
-- **Fast commands** — `start` returns immediately; the process may exit before
-  your first `read`. Reads still return all retained output, then `eof: true`.
-- **Termination** sends a graceful signal, then forces after a short grace;
-  `terminate` is idempotent.
-- **Credential safety** — `~/.ezterm` (or a custom `--data-dir`) contains
-  plaintext SSH passwords, private key paths, transcripts, and logs; treat it
-  as secret. Never read, list, or open files there, or print, repeat, or commit
-  credentials. Use `ezterm config list`, `ezterm list`, and `ezterm read`
-  instead, and redact any credential-looking output.
-- Create or fix configs with `ezterm config web --open`; have the user enter
-  credentials in the browser so they stay off the command line and out of
-  transcripts. Reference configs by name only (`ezterm start --name prod`);
-  never send passwords to a session or use `config ssh --password ...` unless
-  the user explicitly supplied the password. The web page never returns
-  stored passwords, but an exposed daemon can modify configs.
-- **Data directory** — holds `sessions.json`, `messages/`, and `configs/`.
-  Restarting the daemon restores past (finished) sessions as history.
+```yaml
+GET /api/sessions/{id} -> Session          # 404 = unknown id
+```
+
+### write input
+
+```yaml
+# press_enter appends \n (Unix) / \r\n (Windows) ; key bytes: see Key bytes
+POST /api/sessions/{id}/input {text,press_enter?} -> {ok:true}     # 409 = not running
+```
+
+### read output
+
+```yaml
+# timeout: block up to N seconds, 0 = non-blocking, cap 300 ; raw:true keeps ANSI
+# eof:true = process exited and all retained output was consumed
+GET /api/sessions/{id}/output ?reader_id=0&timeout=30&raw=false&max_bytes=0 -> {data,eof}
+```
+
+### new reader
+
+```yaml
+# independent cursor positioned at the current end of output
+POST /api/sessions/{id}/readers -> 201 {reader_id}
+```
+
+### resize
+
+```yaml
+POST /api/sessions/{id}/resize {rows,cols} -> Session
+```
+
+### terminate
+
+```yaml
+# graceful signal, then forced kill; idempotent
+POST /api/sessions/{id}/terminate ?force=false&grace=5 -> {session}
+```
+
+### delete
+
+```yaml
+DELETE /api/sessions/{id} -> 204           # must be finished; 409 while running
+```
+
+### list configs
+
+```yaml
+GET /api/configs -> {configs:[...]}
+```
+
+### get config
+
+```yaml
+GET /api/configs/{name} -> ConfigDetail    # stored password is never returned
+```
+
+### upsert config
+
+```yaml
+# local: {type:"local",command,args?,mode?} | ssh: {type:"ssh",host,port?,user,auth_method,password|key_path,shell?}
+# 400 = invalid or missing credential ; 409 = name owned by the other type
+# never send a password unless the user supplied it — let them type it on the /config page
+POST /api/configs/{name} {type:"local"|"ssh",...} -> ConfigDetail
+```
+
+### delete config
+
+```yaml
+DELETE /api/configs/{name} -> 204
+```
+
+## Key bytes
+
+Send terminal keys as raw bytes in `input.text` with `press_enter:false` —
+e.g. Ctrl+C to interrupt a REPL, arrows to drive a TUI menu. JSON escapes:
+
+| key | JSON string | key | JSON string |
+|---|---|---|---|
+| enter | `"\r"` | backspace | `"\u007f"` |
+| tab | `"\t"` | delete / insert | `"\u001b[3~"` / `"\u001b[2~"` |
+| esc | `"\u001b"` | home / end | `"\u001b[H"` / `"\u001b[F"` |
+| ctrl+a…ctrl+z | `"\u0001"`…`"\u001a"` (ctrl+c=`"\u0003"`, ctrl+d=`"\u0004"`) | pageup / pagedown | `"\u001b[5~"` / `"\u001b[6~"` |
+| up / down / right / left | `"\u001b[A"` / `B` / `C` / `D` | f1–f4 | `"\u001bOP"`…`"\u001bOS"` |
+| alt+x | `"\u001bx"` | f5 / f12 | `"\u001b[15~"` / `"\u001b[24~"` |
+| ctrl+shift+up | `"\u001b[1;6A"` (modifier code: shift=2, alt=3, ctrl=5, ctrl+shift=6, ctrl+alt=7, all=8) | | |
+
+`ctrl+c` is the C0 byte `0x03`; whether it interrupts depends on the program and
+platform (console programs on Windows may ignore it) — fall back to `terminate`.
+
+## Safety
+
+- **Credential safety** — `~/.ezterm` (or a custom data dir) holds plaintext SSH
+  passwords, private key paths, transcripts, and logs; treat it as secret.
+  Never read, list, or open files there, and never print, repeat, or commit
+  credentials. Use the API (`GET /api/configs`, `GET /api/sessions`, `output`)
+  instead, and redact anything credential-looking.
+- **Entering credentials** — have the user type SSH credentials into the
+  `/config` page so they stay off the command line and out of transcripts, and
+  reference configs by name (`"ssh_config":"prod"`). Never send a password in
+  `POST /api/configs/{name}` unless the user explicitly supplied it. Stored
+  passwords are write-only and are never returned by any endpoint.

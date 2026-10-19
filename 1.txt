@@ -1,0 +1,14 @@
+# EzTerm — interactive terminal sessions over HTTP
+
+`ezterm` runs interactive processes (locally or over SSH) as **sessions** and
+lets you send input and read new output across multiple turns — like a real
+terminal, but driven entirely over HTTP. Every response is JSON.
+
+## When to use this skill
+
+- **Local sessions** — run and control a REPL, shell, debugger, installer, or
+  any command that needs input after launch and stays alive across turns.
+- **Remote SSH sessions** — keep an interactive shell on a remote host open
+  without writing one-shot SSH command lines.
+
+For one-shot commands that return immediately, use a normal `bash` tool.

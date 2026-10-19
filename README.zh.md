@@ -24,7 +24,7 @@
 
 `ezterm` 是一个 **CLI + Skill** 项目：一个轻量级命令行工具（CLI + daemon）配一套现成可用的 Agent Skill。二者结合，让 AI 代理（以及人类）能够**多轮运行、驱动和监控交互式终端会话**——REPL、shell、安装器、服务器、远程 SSH 等场景，支持跨多轮的发送输入与读取输出。
 
-CLI 负责实际的会话管理；Skill 封装该 CLI，使支持 SKILL.md 的工具（pi、Claude Code 等）开箱即用。详见 [Agent Skill](#agent-skill) 一节。
+daemon 负责实际的会话管理，对外提供一个小型 JSON HTTP API；Skill 直接调用该 API，使支持 SKILL.md 的工具（pi、Claude Code 等）开箱即用。CLI 仍保留给人与脚本使用。详见 [Agent Skill](#agent-skill) 一节。
 
 ## 致谢 termcp
 
@@ -132,7 +132,7 @@ ezterm --json read <id> --timeout 0
 ## Agent Skill
 
 项目附带一个符合 [agentskills.io](https://agentskills.io) 规范的 Skill：
-[`SKILL.md`](./SKILL.md)（适用于 pi、Claude Code 等支持 SKILL.md 的工具）。
+[`SKILL.md`](./SKILL.md)（适用于 pi、Claude Code 等支持 SKILL.md 的工具）。该 Skill 通过 [`API.md`](./API.md) 描述的 HTTP API 与 daemon 通信。
 
 **推荐安装方式**：将整个仓库目录复制到你的工具的 skills 目录中，使该 Skill 自带完整依赖，且编译好的 `ezterm (Windows下: ezterm.exe)` 与 `SKILL.md` 相邻、便于检索：
 
