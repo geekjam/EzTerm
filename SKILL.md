@@ -66,7 +66,8 @@ GET /health -> {status:"ok"}
 
 ```yaml
 # local: command/args/mode | remote: ssh_config:"<profile>", command empty = profile default shell
-# mode defaults to pty ; web:true (PTY only) fills Session.web_url ; 400 = create failed, 409 = web+pipe
+# mode defaults to pty ; web defaults to true (PTY only) and fills Session.web_url
+# web:false disables it ; omitted + pipe is ignored ; web:true + pipe = 409 ; 400 = create failed
 POST /api/sessions {command?,args?,mode?,name?,rows?,cols?,ssh_config?,web?,dial_timeout_seconds?} -> 201 Session
 ```
 

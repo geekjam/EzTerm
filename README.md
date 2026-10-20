@@ -51,7 +51,7 @@ go build -o ezterm .
 ./ezterm config local --name repl --command python3
 ./ezterm start --name repl
 ./ezterm config local --name dev --mode pty
-./ezterm start --name dev --web
+./ezterm start --name dev          # Web terminal URL printed by default
 ./ezterm send <id> --text '2 + 2' --press-enter
 ./ezterm read <id> --timeout 30
 
@@ -81,9 +81,10 @@ go build -o ezterm .
 - **Precise key input** — `send --press-key` sends one standard terminal key or
   combination such as `ctrl+c`, `enter`, `ctrl+shift+up`, or `f5` without adding
   a newline; it works with both PTY and pipe sessions.
-- **Local Web terminal** — `start --web` exposes an xterm.js browser view for
-  an explicitly enabled PTY session, with live output, input, paste, and resize
-  over WebSocket. The daemon remains local-only by default.
+- **Local Web terminal** — every PTY session started with `start` serves an
+  xterm.js browser view by default (live output, input, paste, and resize over
+  WebSocket); `--noweb` turns the page off. The daemon remains local-only by
+  default.
 - **Web config page** — `ezterm config web [--open]` (or `http://127.0.0.1:18766/config`)
   opens a dark-themed page to create, edit, and delete saved local/SSH configs
   in the browser, matching the Web terminal's look. SSH passwords are
@@ -97,7 +98,7 @@ ezterm [global flags] <command> [flags]
 
 | Command | Description |
 |---|---|
-| `start` | Start a session by saved config name: `--name <config>`, optional `--web`, `--rows`, `--cols`, `--timeout` |
+| `start` | Start a session by saved config name: `--name <config>`, optional `--noweb` (Web terminal is on by default), `--rows`, `--cols`, `--timeout` |
 | `send <id>` | Send input: `--text`, `--press-enter`, or one key/combination with `--press-key` (for example `ctrl+c`, `enter`, `f5`) |
 | `read <id>` | Read new output: `--reader`, `--timeout <sec>`, `--raw`, `--max-bytes` |
 | `attach <id>` | Attach to a running PTY session in raw mode; `Ctrl+]` detaches |
@@ -126,9 +127,10 @@ so use that option only on a trusted network.
 ### Examples
 
 ```bash
-# Define a local config, then start it (--web optional; rows/cols default 24/80).
+# Define a local config, then start it (Web terminal on unless --noweb;
+# rows/cols default 24/80).
 ezterm config local --name dev --command bash --mode pty
-ezterm start --name dev --web
+ezterm start --name dev
 
 # A one-shot piped command from a saved config.
 ezterm config local --name df --command df --args -h --mode pipe
@@ -184,9 +186,9 @@ following directly in pi, Claude Code, or other SKILL.md-aware tools:
 ## HTTP API
 
 The daemon exposes a small JSON API (`/health`, `/api/sessions`,
-`/api/sessions/{id}/output`, `/api/configs`, …) plus the opt-in Web terminal
-page and WebSocket at `/web/{id}` and `/web/{id}/ws`, and a config management
-page at `/config`. See [`API.md`](./API.md).
+`/api/sessions/{id}/output`, `/api/configs`, …) plus the Web terminal
+page and WebSocket at `/web/{id}` and `/web/{id}/ws` (enabled by default for PTY
+sessions), and a config management page at `/config`. See [`API.md`](./API.md).
 
 ## Project Structure & Conventions
 

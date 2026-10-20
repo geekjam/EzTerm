@@ -127,10 +127,12 @@ func (h *Handler) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.Info())
 }
 
-// handleCreateSession creates a session. Web sessions (--web) are only valid
-// in PTY mode; pipe mode returns 409 so callers learn about the conflict
-// immediately. For enabled sessions the daemon advertises the Web terminal
-// URL on web_url.
+// handleCreateSession creates a session. The Web terminal is enabled by
+// default: an omitted web field enables it for PTY sessions and is silently
+// dropped for pipe sessions, which cannot carry terminal semantics. An explicit
+// web:true with pipe mode returns 409 so the caller learns its request cannot
+// be honored, and web:false disables the page. For enabled sessions the daemon
+// advertises the Web terminal URL on web_url.
 func (h *Handler) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	var req api.CreateSessionRequest
 	if !decodeBody(w, r, &req) {
@@ -140,9 +142,13 @@ func (h *Handler) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if mode == "" {
 		mode = api.ModePTY
 	}
-	if req.Web && mode != api.ModePTY {
-		writeError(w, http.StatusConflict, "web terminal requires a PTY session (mode %q)", mode)
-		return
+	web, webExplicit := req.WebRequested()
+	if mode != api.ModePTY {
+		if webExplicit && web {
+			writeError(w, http.StatusConflict, "web terminal requires a PTY session (mode %q)", mode)
+			return
+		}
+		web = false
 	}
 	cfg := session.Config{
 		Command:     strings.TrimSpace(req.Command),
@@ -153,7 +159,7 @@ func (h *Handler) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		Cols:        req.Cols,
 		SSHConfig:   strings.TrimSpace(req.SSHConfig),
 		DialTimeout: time.Duration(req.DialTimeoutSeconds) * time.Second,
-		WebEnabled:  req.Web,
+		WebEnabled:  web,
 	}
 	if cfg.Command == "" && !session.IsRemote(cfg.SSHConfig) && cfg.Mode == api.ModePipe {
 		writeError(w, http.StatusBadRequest, "command is required for local pipe sessions")

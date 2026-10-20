@@ -155,7 +155,7 @@ func usage(fs *flag.FlagSet, msg string) {
 	fmt.Fprint(os.Stderr, `Usage: ezterm [global flags] <command> [flags]
 
 Commands:
-  start        start a session from a saved config (--name <config>; optional --web/--rows/--cols/--timeout)
+  start        start a session from a saved config (--name <config>; Web terminal on, --noweb to disable; --rows/--cols/--timeout)
   send         write input to a session (--text/--press-enter, or --press-key KEY)
   read         read output from a session
   attach       attach to a running PTY session (Ctrl+] to detach)

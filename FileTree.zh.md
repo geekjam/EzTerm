@@ -91,7 +91,7 @@ internal/
 
 attach 流程：CLI `attach` 命令打开 `GET /api/sessions/{id}/attach`（daemon 流式推送原始 PTY 字节流，先重放保留画面），按键通过 `POST /api/sessions/{id}/input`（`press_enter=false`）转发，窗口尺寸变化通过 `POST /api/sessions/{id}/resize` 同步；`Ctrl+]` 本地脱离而不终止会话。
 
-Web 终端（`start --web`）复用同一套 attach 原语（输出用 `AttachReader`/`ReadOutput`，输入用 `SendInput`/`Resize`），经 `/web/{id}/ws` 的 WebSocket 连接，因此浏览器标签页与 `attach` 客户端共享同一 PTY 画面。仅对使用 `--web` 启动且为 PTY 模式的会话开启。
+Web 终端复用同一套 attach 原语（输出用 `AttachReader`/`ReadOutput`，输入用 `SendInput`/`Resize`），经 `/web/{id}/ws` 的 WebSocket 连接，因此浏览器标签页与 `attach` 客户端共享同一 PTY 画面。PTY 会话默认开启（`start` 会打印 URL，`--noweb` / `web: false` 可关闭），pipe 模式永不提供。
 
 `/config` 配置页面与终端页面一起内嵌，使用 `/api/configs` CRUD 端点，支持匹配深色主题的 local/SSH 配置管理。SSH 密码可用于写入，但不会出现在任何响应中。`config web [--open]` 会确保 daemon 运行并打印（或打开）页面 URL。页面与 API 继承 daemon 的绑定地址且无认证，因此默认仅绑定本机非常重要。
 

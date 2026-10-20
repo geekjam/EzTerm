@@ -414,8 +414,8 @@ func TestWebTerminalEndpoints(t *testing.T) {
 		Name:    "web-terminal",
 		Rows:    24,
 		Cols:    80,
-		Web:     true,
 	}
+	// web is omitted: the Web terminal is the default for PTY sessions.
 	var webSession api.Session
 	resp = doJSON(t, client, http.MethodPost, server.URL+"/api/sessions", createWeb, &webSession)
 	if resp.StatusCode != http.StatusCreated {
@@ -504,23 +504,30 @@ func TestWebTerminalEndpoints(t *testing.T) {
 		}
 	}
 
-	// PTY sessions without --web are not exposed, while pipe sessions use a
-	// conflict response because they cannot provide terminal semantics.
+	// A PTY session that explicitly disables the page is not exposed, while pipe
+	// sessions use a conflict response because they cannot provide terminal
+	// semantics.
 	createPlain := api.CreateSessionRequest{
 		Command: os.Args[0],
 		Args:    daemonHelperArgs("interactive"),
 		Mode:    api.ModePTY,
+		Web:     api.BoolPtr(false),
 	}
 	var plainSession api.Session
 	resp = doJSON(t, client, http.MethodPost, server.URL+"/api/sessions", createPlain, &plainSession)
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create plain PTY status = %d", resp.StatusCode)
 	}
+	if plainSession.WebURL != "" {
+		t.Fatalf("web:false session carried web_url %q", plainSession.WebURL)
+	}
 	resp = doJSON(t, client, http.MethodGet, server.URL+"/web/"+plainSession.ID, nil, nil)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("plain PTY web status = %d, want 404", resp.StatusCode)
 	}
 
+	// Pipe sessions silently drop the default so they still start, but expose no
+	// terminal page.
 	createPipe := api.CreateSessionRequest{
 		Command: os.Args[0],
 		Args:    daemonHelperArgs("interactive"),
@@ -531,14 +538,17 @@ func TestWebTerminalEndpoints(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create pipe status = %d", resp.StatusCode)
 	}
+	if pipeSession.WebURL != "" {
+		t.Fatalf("pipe session carried web_url %q", pipeSession.WebURL)
+	}
 	resp = doJSON(t, client, http.MethodGet, server.URL+"/web/"+pipeSession.ID, nil, nil)
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("pipe web status = %d, want 409", resp.StatusCode)
 	}
 
-	// --web with pipe mode is rejected at creation time.
+	// An explicit web:true with pipe mode is rejected at creation time.
 	createInvalid := createPipe
-	createInvalid.Web = true
+	createInvalid.Web = api.BoolPtr(true)
 	resp = doJSON(t, client, http.MethodPost, server.URL+"/api/sessions", createInvalid, nil)
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("web pipe creation status = %d, want 409", resp.StatusCode)

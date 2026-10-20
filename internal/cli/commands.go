@@ -106,7 +106,7 @@ func parseCommandArgs(fs *flag.FlagSet, args []string) []string {
 func cmdStart(c *client, jsonOut bool, dataDir string, args []string) int {
 	fs := flag.NewFlagSet("ezterm start", flag.ContinueOnError)
 	name := fs.String("name", "", "saved config name to start")
-	web := fs.Bool("web", false, "enable the Web terminal page (PTY mode only)")
+	noweb := fs.Bool("noweb", false, "disable the Web terminal page (enabled by default for PTY sessions)")
 	rows := fs.Int("rows", 24, "initial PTY rows")
 	cols := fs.Int("cols", 80, "initial PTY cols")
 	dialTimeout := fs.Int("timeout", 15, "dial timeout in seconds for remote sessions")
@@ -131,7 +131,6 @@ func cmdStart(c *client, jsonOut bool, dataDir string, args []string) int {
 	req := api.CreateSessionRequest{
 		Rows:               *rows,
 		Cols:               *cols,
-		Web:                *web,
 		DialTimeoutSeconds: *dialTimeout,
 	}
 	switch resolved.Type {
@@ -143,6 +142,10 @@ func cmdStart(c *client, jsonOut bool, dataDir string, args []string) int {
 		req.SSHConfig = *name
 		req.Mode = api.ModePTY
 	}
+	// The Web terminal is on unless --noweb is given. Pipe sessions cannot
+	// carry terminal semantics, so they are started with the page disabled
+	// instead of letting the daemon reject the request.
+	req.Web = api.BoolPtr(!*noweb && req.Mode != api.ModePipe)
 
 	session, err := c.create(req, time.Duration(*dialTimeout+10)*time.Second)
 	if err != nil {
@@ -150,7 +153,7 @@ func cmdStart(c *client, jsonOut bool, dataDir string, args []string) int {
 		return exitCodeFor(err)
 	}
 	code := printSession(jsonOut, session, "created")
-	if *web && session.WebURL != "" && !jsonOut {
+	if session.WebURL != "" && !jsonOut {
 		fmt.Printf("web terminal: %s\n", session.WebURL)
 	}
 	return code

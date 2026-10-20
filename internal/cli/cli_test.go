@@ -114,81 +114,42 @@ func captureStdout(t *testing.T, fn func()) string {
 	return string(data)
 }
 
-// TestStartWebFlag covers the --web plumbing of cmdStart: the flag must reach
-// the daemon request body (web=true) and the returned web_url must surface in
-// both human output and the --json session object.
-func TestStartWebFlag(t *testing.T) {
-	var gotWeb bool
-	const webURL = "http://127.0.0.1:18766/web/abc123abc123"
+// startCapture returns a client backed by a stub daemon plus the create request
+// it received last and the session it replies with.
+func startCapture(t *testing.T, session api.Session) (*client, *api.CreateSessionRequest) {
+	t.Helper()
+	got := &api.CreateSessionRequest{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/sessions" {
 			http.NotFound(w, r)
 			return
 		}
-		var req api.CreateSessionRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(got); err != nil {
 			t.Errorf("decode create request: %v", err)
 		}
-		gotWeb = req.Web
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(api.Session{
-			ID:        "abc123abc123",
-			Name:      "dev",
-			Mode:      api.ModePTY,
-			Status:    api.StatusRunning,
-			Rows:      24,
-			Cols:      80,
-			WebURL:    webURL,
-			CreatedAt: time.Now().UTC(),
-		})
+		_ = json.NewEncoder(w).Encode(session)
 	}))
-	defer server.Close()
-	c := &client{baseURL: server.URL, httpClient: server.Client()}
-
-	dir := t.TempDir()
-	store := configstore.NewStore(dir)
-	if err := store.SaveLocal("dev", &configstore.LocalConfig{Mode: api.ModePTY}); err != nil {
-		t.Fatal(err)
-	}
-
-	out := captureStdout(t, func() {
-		if code := cmdStart(c, false, dir, []string{"--name", "dev", "--web"}); code != 0 {
-			t.Fatalf("cmdStart exit = %d", code)
-		}
-	})
-	if !gotWeb {
-		t.Fatal("create request did not carry web=true")
-	}
-	if !strings.Contains(out, "web terminal: "+webURL) {
-		t.Fatalf("human output missing web URL: %q", out)
-	}
-
-	jsonOut := captureStdout(t, func() {
-		if code := cmdStart(c, true, dir, []string{"--name", "dev", "--web"}); code != 0 {
-			t.Fatalf("cmdStart --json exit = %d", code)
-		}
-	})
-	if !strings.Contains(jsonOut, `"web_url":"`+webURL+`"`) {
-		t.Fatalf("JSON output missing web_url: %q", jsonOut)
-	}
+	t.Cleanup(server.Close)
+	return &client{baseURL: server.URL, httpClient: server.Client()}, got
 }
 
-// TestStartWithoutWebFlag asserts the default path stays unchanged: no web
-// flag means web=false on the wire and no web URL line in human output.
-func TestStartWithoutWebFlag(t *testing.T) {
-	var gotWeb bool
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req api.CreateSessionRequest
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		gotWeb = req.Web
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(api.Session{ID: "xyz123xyz123", Name: "dev", Mode: api.ModePTY})
-	}))
-	defer server.Close()
-	c := &client{baseURL: server.URL, httpClient: server.Client()}
-
+// TestStartWebTerminalByDefault covers the default of cmdStart: the Web terminal
+// is requested without any flag, and the returned web_url surfaces in both
+// human output and the --json session object.
+func TestStartWebTerminalByDefault(t *testing.T) {
+	const webURL = "http://127.0.0.1:18766/web/abc123abc123"
+	c, got := startCapture(t, api.Session{
+		ID:        "abc123abc123",
+		Name:      "dev",
+		Mode:      api.ModePTY,
+		Status:    api.StatusRunning,
+		Rows:      24,
+		Cols:      80,
+		WebURL:    webURL,
+		CreatedAt: time.Now().UTC(),
+	})
 	dir := t.TempDir()
 	store := configstore.NewStore(dir)
 	if err := store.SaveLocal("dev", &configstore.LocalConfig{Mode: api.ModePTY}); err != nil {
@@ -200,11 +161,81 @@ func TestStartWithoutWebFlag(t *testing.T) {
 			t.Fatalf("cmdStart exit = %d", code)
 		}
 	})
-	if gotWeb {
-		t.Fatal("create request unexpectedly carried web=true")
+	if got.Web == nil || !*got.Web {
+		t.Fatalf("create request web = %v, want explicit true", got.Web)
+	}
+	if !strings.Contains(out, "web terminal: "+webURL) {
+		t.Fatalf("human output missing web URL: %q", out)
+	}
+
+	jsonOut := captureStdout(t, func() {
+		if code := cmdStart(c, true, dir, []string{"--name", "dev"}); code != 0 {
+			t.Fatalf("cmdStart --json exit = %d", code)
+		}
+	})
+	if !strings.Contains(jsonOut, `"web_url":"`+webURL+`"`) {
+		t.Fatalf("JSON output missing web_url: %q", jsonOut)
+	}
+}
+
+// TestStartNoWebFlag asserts --noweb disables the Web terminal: web=false on the
+// wire and no web URL line in human output.
+func TestStartNoWebFlag(t *testing.T) {
+	c, got := startCapture(t, api.Session{ID: "xyz123xyz123", Name: "dev", Mode: api.ModePTY})
+	dir := t.TempDir()
+	store := configstore.NewStore(dir)
+	if err := store.SaveLocal("dev", &configstore.LocalConfig{Mode: api.ModePTY}); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() {
+		if code := cmdStart(c, false, dir, []string{"--name", "dev", "--noweb"}); code != 0 {
+			t.Fatalf("cmdStart exit = %d", code)
+		}
+	})
+	if got.Web == nil || *got.Web {
+		t.Fatalf("create request web = %v, want explicit false", got.Web)
 	}
 	if strings.Contains(out, "web terminal:") {
-		t.Fatalf("default start printed a web URL: %q", out)
+		t.Fatalf("--noweb start printed a web URL: %q", out)
+	}
+}
+
+// TestStartPipeSessionDisablesWeb asserts pipe configs are started with the Web
+// terminal disabled instead of letting the daemon reject the request.
+func TestStartPipeSessionDisablesWeb(t *testing.T) {
+	c, got := startCapture(t, api.Session{ID: "pipe123pipe1", Name: "repl", Mode: api.ModePipe})
+	dir := t.TempDir()
+	store := configstore.NewStore(dir)
+	if err := store.SaveLocal("repl", &configstore.LocalConfig{Command: "python3", Mode: api.ModePipe}); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() {
+		if code := cmdStart(c, false, dir, []string{"--name", "repl"}); code != 0 {
+			t.Fatalf("cmdStart exit = %d", code)
+		}
+	})
+	if got.Mode != api.ModePipe {
+		t.Fatalf("create request mode = %q, want pipe", got.Mode)
+	}
+	if got.Web == nil || *got.Web {
+		t.Fatalf("create request web = %v, want explicit false for pipe", got.Web)
+	}
+	if strings.Contains(out, "web terminal:") {
+		t.Fatalf("pipe start printed a web URL: %q", out)
+	}
+}
+
+// TestStartRejectsWebFlag asserts the removed --web flag now fails parsing.
+func TestStartRejectsWebFlag(t *testing.T) {
+	c, _ := startCapture(t, api.Session{ID: "abc123abc123", Mode: api.ModePTY})
+	dir := t.TempDir()
+	if err := configstore.NewStore(dir).SaveLocal("dev", &configstore.LocalConfig{Mode: api.ModePTY}); err != nil {
+		t.Fatal(err)
+	}
+	if code := cmdStart(c, false, dir, []string{"--name", "dev", "--web"}); code != 2 {
+		t.Fatalf("cmdStart --web exit = %d, want 2", code)
 	}
 }
 

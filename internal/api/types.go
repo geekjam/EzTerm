@@ -56,6 +56,9 @@ type MessageIndexEntry struct {
 }
 
 // CreateSessionRequest is the request body for POST /api/sessions.
+//
+// Web is a pointer so an omitted field can default to enabled (the Web terminal
+// is on unless it is set to false); see WebRequested.
 type CreateSessionRequest struct {
 	Command            string   `json:"command"`
 	Args               []string `json:"args"`
@@ -64,9 +67,23 @@ type CreateSessionRequest struct {
 	Rows               int      `json:"rows"`
 	Cols               int      `json:"cols"`
 	SSHConfig          string   `json:"ssh_config"`
-	Web                bool     `json:"web"` // enable the Web terminal at /web/<id>
+	Web                *bool    `json:"web,omitempty"`
 	DialTimeoutSeconds int      `json:"dial_timeout_seconds"`
 }
+
+// WebRequested reports whether the Web terminal is wanted and whether the
+// caller set the field explicitly. An omitted field defaults to enabled; pipe
+// sessions silently drop an omitted value but reject an explicit true.
+func (r CreateSessionRequest) WebRequested() (enabled, explicit bool) {
+	if r.Web == nil {
+		return true, false
+	}
+	return *r.Web, true
+}
+
+// BoolPtr returns a pointer to b; it builds optional wire fields such as
+// CreateSessionRequest.Web.
+func BoolPtr(b bool) *bool { return &b }
 
 // InputRequest is the request body for a session input operation.
 type InputRequest struct {

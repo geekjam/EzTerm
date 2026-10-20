@@ -41,7 +41,7 @@ go build -o ezterm .
 ./ezterm config local --name repl --command python3
 ./ezterm start --name repl
 ./ezterm config local --name dev --mode pty
-./ezterm start --name dev --web
+./ezterm start --name dev          # 默认打印 Web 终端 URL
 ./ezterm send <id> --text '2 + 2' --press-enter
 ./ezterm read <id> --timeout 30
 
@@ -60,7 +60,7 @@ go build -o ezterm .
 - **跨平台** — Unix 使用 `creack/pty`，Windows 使用 ConPTY；管道模式全平台可用。
 - **共享终端 attach** — `attach <id>` 以 raw mode 进入会话的实时 PTY 画面（类似 `tmux attach`）：按键与窗口尺寸自动转发，输出实时流回，`Ctrl+]` 脱离而不终止会话。
 - **精确按键输入** — `send --press-key` 发送单个标准终端按键或组合键（如 `ctrl+c`、`enter`、`ctrl+shift+up`、`f5`），不追加换行；PTY 与 pipe 会话均可使用。
-- **本机 Web 终端** — `start --web` 为显式开启的 PTY 会话提供 xterm.js 浏览器画面，通过 WebSocket 实时传输输出、输入、粘贴和尺寸；daemon 默认只监听本机。
+- **本机 Web 终端** — 每个用 `start` 启动的 PTY 会话默认提供 xterm.js 浏览器画面，通过 WebSocket 实时传输输出、输入、粘贴和尺寸；`--noweb` 可关闭该页面。daemon 默认只监听本机。
 - **本机配置网页** — `ezterm config web [--open]`（或 `http://127.0.0.1:18766/config`）在浏览器中打开深色主题页面，用于创建、编辑、删除已保存的本地/SSH 配置，配色与 Web 终端一致。SSH 密码为只写：页面永不回显已存密码。
 
 ## 命令行
@@ -71,7 +71,7 @@ ezterm [全局参数] <命令> [参数]
 
 | 命令 | 说明 |
 |---|---|
-| `start` | 按保存的配置启动会话：`--name <配置名>`，可选 `--web`、`--rows`、`--cols`、`--timeout` |
+| `start` | 按保存的配置启动会话：`--name <配置名>`，可选 `--noweb`（默认开启 Web 终端）、`--rows`、`--cols`、`--timeout` |
 | `send <id>` | 发送输入：`--text`、`--press-enter`，或用 `--press-key` 发送单个按键/组合键（如 `ctrl+c`、`enter`、`f5`） |
 | `read <id>` | 读取新输出：`--reader`、`--timeout <秒>`、`--raw`、`--max-bytes` |
 | `attach <id>` | 以 raw mode 进入运行中的 PTY 会话；`Ctrl+]` 脱离 |
@@ -97,9 +97,9 @@ ezterm [全局参数] <命令> [参数]
 ### 示例
 
 ```bash
-# 创建本地配置并启动（--web 可选；rows/cols 默认 24/80）。
+# 创建本地配置并启动（默认开启 Web 终端，--noweb 可关闭；rows/cols 默认 24/80）。
 ezterm config local --name dev --command bash --mode pty
-ezterm start --name dev --web
+ezterm start --name dev
 
 # 从保存的配置启动一次性管道命令。
 ezterm config local --name df --command df --args -h --mode pipe
@@ -147,7 +147,7 @@ cp -r ./EzTerm ~/.pi/agent/skills/EzTerm
 
 ## HTTP API
 
-daemon 提供小型 JSON API（`/health`、`/api/sessions`、`/api/sessions/{id}/output`、`/api/configs` 等），以及按需开启的 Web 终端页面和 WebSocket：`/web/{id}`、`/web/{id}/ws`，另有配置管理页面 `/config`。详见 [`API.md`](./API.md)（中文版 [`API.zh.md`](./API.zh.md)）。
+daemon 提供小型 JSON API（`/health`、`/api/sessions`、`/api/sessions/{id}/output`、`/api/configs` 等），以及 Web 终端页面和 WebSocket：`/web/{id}`、`/web/{id}/ws`（PTY 会话默认开启），另有配置管理页面 `/config`。详见 [`API.md`](./API.md)（中文版 [`API.zh.md`](./API.zh.md)）。
 
 ## 项目结构与规范
 

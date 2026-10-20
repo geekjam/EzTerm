@@ -36,7 +36,8 @@ CLI 用于探测 daemon 是否存活。
 ```json
 {"id": "a1b2c3d45678", "name": "dev", "command": "", "args": null,
  "mode": "pty", "status": "running", "pid": 1234, "exit_code": 0,
- "rows": 24, "cols": 80, "ssh_config": "", "web_url": "",
+ "rows": 24, "cols": 80, "ssh_config": "",
+ "web_url": "http://127.0.0.1:18766/web/a1b2c3d45678",
  "created_at": "2026-08-02T10:00:00Z",
  "updated_at": "2026-08-02T10:00:00Z", "finished_at": null}
 ```
@@ -52,17 +53,19 @@ CLI 用于探测 daemon 是否存活。
 | `exit_code` | int | 结束后有意义 |
 | `rows` / `cols` | int | PTY 尺寸 |
 | `ssh_config` | string | `""`/`"internal"` = 本机；否则为 profile 名 |
-| `web_url` | string | Web 终端 URL（`/web/<id>`）；未使用 `--web` 时为空串 |
+| `web_url` | string | Web 终端 URL（`/web/<id>`）；页面被关闭或会话为 `pipe` 模式时为空串 |
 | `created_at` / `updated_at` / `finished_at` | string / null | 时间戳 |
 
 ### `POST /api/sessions`
 
-创建并启动会话。成功返回 `201` + 会话对象；一般创建错误（如 SSH 连接失败、profile 缺失）返回 `400`，`web` 搭配 pipe 模式返回 `409`。
+创建并启动会话。成功返回 `201` + 会话对象；一般创建错误（如 SSH 连接失败、profile 缺失）返回 `400`，显式 `web: true` 搭配 pipe 模式返回 `409`。
+
+Web 终端**默认开启**：省略 `web` 即为 PTY 会话提供 `/web/{id}`。pipe 会话省略 `web` 时会被静默忽略（无法提供终端语义），显式 `web: false` 则在任何模式下关闭该页面。
 
 ```json
 {"command": "python3", "args": ["-i"], "mode": "pty",
  "name": "repl", "rows": 24, "cols": 80,
- "ssh_config": "internal", "web": false, "dial_timeout_seconds": 15}
+ "ssh_config": "internal", "web": true, "dial_timeout_seconds": 15}
 ```
 
 | 字段 | 类型 | 说明 |
@@ -73,7 +76,7 @@ CLI 用于探测 daemon 是否存活。
 | `name` | string | 可选会话名 |
 | `rows` / `cols` | int | PTY 尺寸（默认 24×80） |
 | `ssh_config` | string | `""`/`"internal"` = 本机；否则为 profile 名 |
-| `web` | bool | 开启 Web 终端页面；仅 PTY 模式（pipe 返回 `409`） |
+| `web` | bool | Web 终端页面；**默认 `true`**。仅 PTY：省略 + pipe 自动忽略，显式 `true` + pipe 返回 `409`，`false` 关闭页面 |
 | `dial_timeout_seconds` | int | SSH 连接超时（默认 15） |
 
 ### `POST /api/sessions/{id}/input`
@@ -149,13 +152,13 @@ CLI 的 `--press-key` 字节（键名、控制字节、CSI 序列）通过 `text
 
 ### `GET /web/{id}`
 
-为以 `web: true` 创建的会话提供内嵌 Web 终端页面。页面在运行时通过 CDN 加载 xterm.js（无构建步骤），并连接 `/web/{id}/ws`。仅 daemon 绑定地址（默认 `127.0.0.1`）上的机器可访问，无认证。
+为已开启 Web 页面的会话提供内嵌 Web 终端页面（PTY 会话默认开启，`web: false` 关闭）。页面在运行时通过 CDN 加载 xterm.js（无构建步骤），并连接 `/web/{id}/ws`。仅 daemon 绑定地址（默认 `127.0.0.1`）上的机器可访问，无认证。
 
 | 条件 | 响应 |
 |---|---|
 | 会话不存在 | `404` |
 | 会话为 `pipe` 模式 | `409`（Web 终端需要 PTY 会话） |
-| 会话未以 `web: true` 创建 | `404` |
+| 会话以 `web: false` 创建 | `404` |
 | 成功 | `200`，`text/html` |
 
 关闭浏览器标签页不会终止会话；会话继续运行，与 `attach` 一致。多个标签页等同多个 attach 客户端，共享同一 PTY 画面。

@@ -96,11 +96,11 @@ forwards keystrokes over `POST /api/sessions/{id}/input` with
 `POST /api/sessions/{id}/resize`; `Ctrl+]` detaches locally without stopping
 the session.
 
-The Web terminal (`start --web`) reuses the same attach primitives
+The Web terminal reuses the same attach primitives
 (`AttachReader`/`ReadOutput` for output, `SendInput`/`Resize` for input) over a
 WebSocket at `/web/{id}/ws`, so browser tabs share the same PTY screen as
-`attach` clients. It is only enabled for sessions started with `--web` and only
-in PTY mode.
+`attach` clients. It is enabled by default for PTY sessions (`start` prints the
+URL; `--noweb` / `web: false` disables it) and is never available in pipe mode.
 
 The config page at `/config` is embedded alongside the terminal page and uses
 `/api/configs` CRUD endpoints. It supports both local and SSH configs in a

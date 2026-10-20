@@ -40,7 +40,8 @@ Get one session. Returns `404` if unknown.
 ```json
 {"id": "a1b2c3d45678", "name": "dev", "command": "", "args": null,
  "mode": "pty", "status": "running", "pid": 1234, "exit_code": 0,
- "rows": 24, "cols": 80, "ssh_config": "", "web_url": "",
+ "rows": 24, "cols": 80, "ssh_config": "",
+ "web_url": "http://127.0.0.1:18766/web/a1b2c3d45678",
  "created_at": "2026-08-02T10:00:00Z",
  "updated_at": "2026-08-02T10:00:00Z", "finished_at": null}
 ```
@@ -56,19 +57,24 @@ Get one session. Returns `404` if unknown.
 | `exit_code` | int | meaningful once exited/terminated |
 | `rows` / `cols` | int | PTY dimensions |
 | `ssh_config` | string | `""`/`"internal"` = local; else profile name |
-| `web_url` | string | Web terminal URL (`/web/<id>`); empty when `--web` was not used |
+| `web_url` | string | Web terminal URL (`/web/<id>`); empty when the page is disabled or the session is `pipe` mode |
 | `created_at` / `updated_at` / `finished_at` | string / null | timestamps |
 
 ### `POST /api/sessions`
 
 Create and start a session. Returns `201` with the session, `400` for general
-creation errors (e.g. SSH dial failure or missing profile), or `409` when
-`web` is combined with pipe mode.
+creation errors (e.g. SSH dial failure or missing profile), or `409` when an
+explicit `web: true` is combined with pipe mode.
+
+The Web terminal is **enabled by default**: omit `web` to serve `/web/{id}` for
+a PTY session. An omitted `web` is silently dropped for pipe sessions (which
+cannot provide terminal semantics), while an explicit `web: false` disables the
+page for any mode.
 
 ```json
 {"command": "python3", "args": ["-i"], "mode": "pty",
  "name": "repl", "rows": 24, "cols": 80,
- "ssh_config": "internal", "web": false, "dial_timeout_seconds": 15}
+ "ssh_config": "internal", "web": true, "dial_timeout_seconds": 15}
 ```
 
 | Field | Type | Notes |
@@ -79,7 +85,7 @@ creation errors (e.g. SSH dial failure or missing profile), or `409` when
 | `name` | string | optional session name |
 | `rows` / `cols` | int | PTY size (defaults 24×80) |
 | `ssh_config` | string | `""` or `"internal"` = local host; otherwise a profile name |
-| `web` | bool | enable the Web terminal page; PTY mode only (`409` for pipe) |
+| `web` | bool | Web terminal page; **defaults to `true`**. PTY only: omitted + pipe is ignored, explicit `true` + pipe returns `409`, `false` disables the page |
 | `dial_timeout_seconds` | int | SSH dial timeout (default 15) |
 
 ### `POST /api/sessions/{id}/input`
@@ -169,7 +175,8 @@ its local terminal on connect and whenever the window size changes.
 
 ### `GET /web/{id}`
 
-Serve the embedded Web terminal page for a session created with `web: true`.
+Serve the embedded Web terminal page for a session with the page enabled (the
+default for PTY sessions; disabled by `web: false`).
 The page loads xterm.js from a CDN at runtime (no build step) and connects to
 `/web/{id}/ws`. It is only reachable from the machine the daemon binds to
 (default `127.0.0.1`); there is no authentication.
@@ -178,7 +185,7 @@ The page loads xterm.js from a CDN at runtime (no build step) and connects to
 |---|---|
 | session not found | `404` |
 | session is `pipe` mode | `409` (web terminal requires a PTY session) |
-| session was created without `web: true` | `404` |
+| session was created with `web: false` | `404` |
 | success | `200`, `text/html` |
 
 Closing the browser tab does not stop the session; it keeps running exactly as
