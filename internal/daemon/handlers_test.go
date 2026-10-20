@@ -559,6 +559,92 @@ func TestWebTerminalEndpoints(t *testing.T) {
 	mgr.Terminate(pipeSession.ID, time.Second, true)
 }
 
+// TestWebTerminalSessionEndFrame covers the session-end text frame: it is sent
+// only when the session's process exits, never when a browser connection drops.
+func TestWebTerminalSessionEndFrame(t *testing.T) {
+	server, mgr := testHandler(t)
+	client := server.Client()
+
+	create := api.CreateSessionRequest{
+		Command: os.Args[0],
+		Args:    daemonHelperArgs("interactive"),
+		Mode:    api.ModePTY,
+		Rows:    24,
+		Cols:    80,
+	}
+	var created api.Session
+	resp := doJSON(t, client, http.MethodPost, server.URL+"/api/sessions", create, &created)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create web session status = %d", resp.StatusCode)
+	}
+	if created.WebURL == "" {
+		t.Fatal("web terminal was not enabled for a PTY session")
+	}
+	defer mgr.Terminate(created.ID, time.Second, true)
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/web/" + created.ID + "/ws"
+	wsCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(wsCtx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial web terminal: %v", err)
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "")
+
+	// A second client disconnecting must not look like a session end: the first
+	// client keeps getting echo output and never sees a session-end frame.
+	second, _, err := websocket.Dial(wsCtx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial second web terminal: %v", err)
+	}
+	if err := second.Close(websocket.StatusNormalClosure, "client gone"); err != nil {
+		t.Fatalf("close second web terminal: %v", err)
+	}
+
+	marker := "web-terminal-alive"
+	if err := conn.Write(wsCtx, websocket.MessageBinary, []byte(marker+"\n")); err != nil {
+		t.Fatalf("send web input: %v", err)
+	}
+	var echo strings.Builder
+	for !strings.Contains(echo.String(), marker) {
+		typ, data, readErr := conn.Read(wsCtx)
+		if readErr != nil {
+			t.Fatalf("read web output: %v; output=%q", readErr, echo.String())
+		}
+		if typ == websocket.MessageText {
+			t.Fatalf("unexpected text frame before session end: %q", data)
+		}
+		echo.Write(data)
+	}
+	if info := mgr.Get(created.ID).Info(); info.Status != api.StatusRunning {
+		t.Fatalf("session status = %q after client disconnect, want running", info.Status)
+	}
+
+	// Terminating the session drains the output and then flags the end.
+	mgr.Terminate(created.ID, time.Second, true)
+	var sawEnd bool
+	for !sawEnd {
+		typ, data, readErr := conn.Read(wsCtx)
+		if readErr != nil {
+			t.Fatalf("read after terminate: %v (session-end seen: %v)", readErr, sawEnd)
+		}
+		if typ != websocket.MessageText {
+			continue
+		}
+		if string(data) != webSessionEndMessage {
+			t.Fatalf("unexpected text frame %q, want %q", data, webSessionEndMessage)
+		}
+		sawEnd = true
+	}
+
+	// The marker is followed by a normal closure.
+	if _, _, readErr := conn.Read(wsCtx); readErr == nil {
+		t.Fatal("connection stayed open after session-end")
+	} else if status := websocket.CloseStatus(readErr); status != websocket.StatusNormalClosure {
+		t.Fatalf("close status = %v (%v), want normal closure", status, readErr)
+	}
+}
+
 func TestReaderAndSSHConfigEndpoints(t *testing.T) {
 	server, mgr := testHandler(t)
 	client := server.Client()

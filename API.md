@@ -192,6 +192,11 @@ Closing the browser tab does not stop the session; it keeps running exactly as
 with `attach`. Multiple browser tabs are treated like multiple attach clients
 and share the same PTY screen.
 
+The page reports disconnects with an in-page modal dialog: "Session
+disconnected" when the process ended (the `session-end` frame below), and
+"Connection lost" when the WebSocket broke while the session kept running, in
+which case the page reconnects automatically and restores the terminal.
+
 ### `GET /web/{id}/ws`
 
 WebSocket endpoint used by the embedded page. The same access rules as
@@ -209,6 +214,19 @@ Protocol (one bidirectional connection):
 ```json
 {"type": "resize", "rows": 40, "cols": 120}
 ```
+
+- Server → client **text frames** carry status JSON. The only such message is
+  the session-end marker:
+
+```json
+{"type": "session-end"}
+```
+
+It is sent once, after the process exits and all retained output has been
+sent, immediately before the server closes the connection with a normal
+closure. A transport failure (network drop, daemon restart, page unload)
+never produces this frame, so a client can tell "the session finished" apart
+from "the connection broke".
 
 When the session ends and all retained output has been sent, the server closes
 the connection with a normal closure.

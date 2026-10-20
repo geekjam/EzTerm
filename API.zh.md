@@ -163,6 +163,8 @@ CLI 的 `--press-key` 字节（键名、控制字节、CSI 序列）通过 `text
 
 关闭浏览器标签页不会终止会话；会话继续运行，与 `attach` 一致。多个标签页等同多个 attach 客户端，共享同一 PTY 画面。
 
+页面用内嵌模态弹窗提示断开：进程结束时提示「Session disconnected」（即下文的 `session-end` 帧）；WebSocket 断开但会话仍在运行时提示「Connection lost」，并自动重连，重连成功后恢复终端。
+
 ### `GET /web/{id}/ws`
 
 嵌入式页面使用的 WebSocket 端点。访问规则与 `GET /web/{id}` 相同。默认接受请求 Host 的 origin，仅监听 daemon 绑定地址。
@@ -176,6 +178,14 @@ CLI 的 `--press-key` 字节（键名、控制字节、CSI 序列）通过 `text
 ```json
 {"type": "resize", "rows": 40, "cols": 120}
 ```
+
+- 服务器 → 客户端 **文本帧** 携带状态 JSON，目前仅有会话结束标记：
+
+```json
+{"type": "session-end"}
+```
+
+该帧在进程退出、保留输出全部发送完毕后发送一次，随后服务器以正常关闭码关闭连接。传输层断开（网络中断、daemon 重启、页面关闭）**不会**发送该帧，因此客户端可区分「会话结束」与「连接断开」。
 
 会话结束且保留输出全部发送完毕后，服务器以正常关闭码关闭连接。
 

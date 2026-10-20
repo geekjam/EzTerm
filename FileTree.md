@@ -66,7 +66,7 @@ internal/
 │   ├── daemon.go                 # HTTP server, flags, graceful shutdown
 │   ├── handlers.go               # REST/JSON handlers, config CRUD, attach stream
 │   ├── web.go                    # Embedded Web terminal/config pages + WebSocket bridge
-│   └── web/                      # xterm.js terminal + dark config page assets (go:embed)
+│   └── web/                      # xterm.js terminal + disconnect dialog + dark config page assets (go:embed)
 ├── message/
 │   └── message.go                # Per-session message index + content files
 ├── session/
@@ -101,6 +101,10 @@ The Web terminal reuses the same attach primitives
 WebSocket at `/web/{id}/ws`, so browser tabs share the same PTY screen as
 `attach` clients. It is enabled by default for PTY sessions (`start` prints the
 URL; `--noweb` / `web: false` disables it) and is never available in pipe mode.
+When the process exits, the daemon sends a `{"type":"session-end"}` text frame
+before the normal closure, which the page uses to show a "Session disconnected"
+dialog; a broken transport produces a "Connection lost" dialog and a background
+reconnect instead.
 
 The config page at `/config` is embedded alongside the terminal page and uses
 `/api/configs` CRUD endpoints. It supports both local and SSH configs in a

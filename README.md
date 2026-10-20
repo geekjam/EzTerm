@@ -83,7 +83,9 @@ go build -o ezterm .
   a newline; it works with both PTY and pipe sessions.
 - **Local Web terminal** — every PTY session started with `start` serves an
   xterm.js browser view by default (live output, input, paste, and resize over
-  WebSocket); `--noweb` turns the page off. The daemon remains local-only by
+  WebSocket); `--noweb` turns the page off. The page reports disconnects with
+  an in-page dialog and distinguishes a finished session from a dropped
+  connection, which it reconnects on its own. The daemon remains local-only by
   default.
 - **Web config page** — `ezterm config web [--open]` (or `http://127.0.0.1:18766/config`)
   opens a dark-themed page to create, edit, and delete saved local/SSH configs

@@ -38,6 +38,12 @@ type webResizeMessage struct {
 	Cols int    `json:"cols"`
 }
 
+// webSessionEndMessage is the text frame sent right before the connection
+// closes because the session's process exited. The page uses it to tell a
+// finished session apart from a dropped WebSocket connection: a broken
+// transport never sends this frame.
+const webSessionEndMessage = `{"type":"session-end"}`
+
 func (h *Handler) webURL(id string) string {
 	return "http://" + net.JoinHostPort(h.host, strconv.Itoa(h.port)) + "/web/" + id
 }
@@ -102,7 +108,8 @@ func (h *Handler) handleConfigStyle(w http.ResponseWriter, r *http.Request) {
 
 // handleWebSocket bridges one browser WebSocket to the session's shared PTY
 // output buffer. Binary frames carry raw terminal input/output; text frames
-// carry resize JSON messages.
+// carry resize JSON messages from the browser and a one-shot session-end
+// marker from the server.
 func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	s, ok := h.webSession(w, r)
 	if !ok {
@@ -170,6 +177,14 @@ func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if eof {
+			// The process exited and retained output is drained, so flag the end
+			// of the session before closing. The explicit close handshake keeps
+			// the cancellation deferred below from tearing the transport down
+			// abruptly, which the page would read as a dropped connection.
+			if writeErr := conn.Write(ctx, websocket.MessageText, []byte(webSessionEndMessage)); writeErr != nil {
+				return
+			}
+			_ = conn.Close(websocket.StatusNormalClosure, "")
 			return
 		}
 	}

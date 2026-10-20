@@ -92,6 +92,8 @@ docs: add HTTP API reference
 - CLI 是主要消费者；退出码稳定：`0` 成功、`1` 会话不存在、`2` 其他错误。`--json` 输出稳定且无人类装饰。
 - `send --press-key` 每次调用接受一个大小写不敏感的按键表达式。CLI 将 VT/xterm 字节通过 `InputRequest.Text` 发送，并固定 `PressEnter=false`；它与 `--text`、`--press-enter` 互斥，非法表达式返回退出码 `2`。
 - 向后兼容：删除或重命名端点/CLI flag 属于破坏性变更，需配合版本号。
+- **WebSocket 帧：** 二进制帧承载原始终端字节；文本帧承载 JSON 控制消息（浏览器 → 服务器的 `{"type":"resize",…}`，服务器 → 客户端在正常关闭前发送的 `{"type":"session-end"}`）。新增控制消息必须写入 `API.md`。
+- **Web UI 文案使用英文**，与 CLI 输出和 API 文档一致；内嵌页面无构建步骤，保持依赖精简。
 - **安全：** 绝不提交凭据、密钥或私密材料。SSH profile 可包含用户 `~/.ezterm` 数据目录中的密码/密钥，但绝不能进入仓库或 profile 骨架。
 
 ## 6. 依赖

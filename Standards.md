@@ -115,6 +115,12 @@ docs: add HTTP API reference
   `--press-enter`, and invalid expressions return exit code `2`.
 - Backward compatibility: removing or renaming an endpoint or CLI flag is a
   breaking change; coordinate it with a version bump.
+- **WebSocket frames:** binary frames carry raw terminal bytes; text frames
+  carry JSON control messages (`{"type":"resize",…}` from the browser,
+  `{"type":"session-end"}` from the server right before the normal closure).
+  Any new control message must be documented in `API.md`.
+- **Web UI copy is English**, matching the CLI output and the API docs; the
+  embedded pages have no build step, so keep them dependency-light.
 - **Security:** never commit credentials, keys, or private material. SSH
   profiles may contain passwords/keys in the user's `~/.ezterm` data dir but
   must never ship in the repository or the profile skeleton.

@@ -60,7 +60,7 @@ go build -o ezterm .
 - **跨平台** — Unix 使用 `creack/pty`，Windows 使用 ConPTY；管道模式全平台可用。
 - **共享终端 attach** — `attach <id>` 以 raw mode 进入会话的实时 PTY 画面（类似 `tmux attach`）：按键与窗口尺寸自动转发，输出实时流回，`Ctrl+]` 脱离而不终止会话。
 - **精确按键输入** — `send --press-key` 发送单个标准终端按键或组合键（如 `ctrl+c`、`enter`、`ctrl+shift+up`、`f5`），不追加换行；PTY 与 pipe 会话均可使用。
-- **本机 Web 终端** — 每个用 `start` 启动的 PTY 会话默认提供 xterm.js 浏览器画面，通过 WebSocket 实时传输输出、输入、粘贴和尺寸；`--noweb` 可关闭该页面。daemon 默认只监听本机。
+- **本机 Web 终端** — 每个用 `start` 启动的 PTY 会话默认提供 xterm.js 浏览器画面，通过 WebSocket 实时传输输出、输入、粘贴和尺寸；`--noweb` 可关闭该页面。断开时页面用内嵌弹窗提示，并区分「会话结束」与「连接断开」（后者自动重连）。daemon 默认只监听本机。
 - **本机配置网页** — `ezterm config web [--open]`（或 `http://127.0.0.1:18766/config`）在浏览器中打开深色主题页面，用于创建、编辑、删除已保存的本地/SSH 配置，配色与 Web 终端一致。SSH 密码为只写：页面永不回显已存密码。
 
 ## 命令行
