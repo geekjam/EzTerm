@@ -12,12 +12,6 @@ description: >-
 lets you send input and read new output across multiple turns — like a real
 terminal, but driven entirely over HTTP. Every response is JSON.
 
-## When to use this skill
-
-Use it to connect to a specified server or terminal and start, drive, and read
-interactive sessions — REPLs, installers, servers, remote SSH shells. For
-one-shot commands, use the local terminal tool.
-
 ## Build the binary
 
 ```bash
@@ -68,8 +62,15 @@ GET /health -> {status:"ok"}
 # local: command/args/mode | remote: ssh_config:"<profile>", command empty = profile default shell
 # mode defaults to pty ; web defaults to true (PTY only) and fills Session.web_url
 # web:false disables it ; omitted + pipe is ignored ; web:true + pipe = 409 ; 400 = create failed
+# status may be awaiting_password: the session needs a password typed by the user in
+# Session.web_url; 409 = that config needs a password prompt but web:false was sent
 POST /api/sessions {command?,args?,mode?,name?,rows?,cols?,ssh_config?,web?,dial_timeout_seconds?} -> 201 Session
 ```
+
+`Session` fields you rely on: `id`, `name`, `status`, `exit_code`, `mode`,
+`ssh_config`, `web_url`, and `pending_prompt` (`{kind,label}` or absent).
+`status` is one of `starting`, `running`, `awaiting_password`, `exited`,
+`terminated`.
 
 ### list sessions
 
@@ -134,14 +135,16 @@ GET /api/configs -> {configs:[...]}
 
 ```yaml
 GET /api/configs/{name} -> ConfigDetail    # stored password is never returned
+# has_password = a secret is stored ; password_prompt = ask in the Web terminal each start
 ```
 
 ### upsert config
 
 ```yaml
-# local: {type:"local",command,args?,mode?} | ssh: {type:"ssh",host,port?,user,auth_method,password|key_path,shell?}
-# 400 = invalid or missing credential ; 409 = name owned by the other type
+# local: {type:"local",command,args?,mode?} | ssh: {type:"ssh",host,port?,user,auth_method,password|key_path,shell?,password_prompt?}
+# 400 = invalid or missing key_path ; 409 = name owned by the other type
 # never send a password unless the user supplied it — let them type it on the /config page
+# auth_method:"password" with no password = ask in the Web terminal on every start (nothing stored)
 POST /api/configs/{name} {type:"local"|"ssh",...} -> ConfigDetail
 ```
 
@@ -176,8 +179,16 @@ platform (console programs on Windows may ignore it) — fall back to `terminate
   Never read, list, or open files there, and never print, repeat, or commit
   credentials. Use the API (`GET /api/configs`, `GET /api/sessions`, `output`)
   instead, and redact anything credential-looking.
-- **Entering credentials** — have the user type SSH credentials into the
-  `/config` page so they stay off the command line and out of transcripts, and
-  reference configs by name (`"ssh_config":"prod"`). Never send a password in
-  `POST /api/configs/{name}` unless the user explicitly supplied it. Stored
-  passwords are write-only and are never returned by any endpoint.
+- **Password prompts** — `status:"awaiting_password"` or a `pending_prompt`
+  means only the human can supply the secret. Tell the user to open
+  `Session.web_url` and type it there. Never ask for the password in chat and
+  never send it via `input` or `/api/configs`. Then poll
+  `GET /api/sessions/{id}` until `running`, `exited`, or `terminated` (300 s).
+- **Entering credentials** — prefer a config that stores **no** password
+  (`auth_method:"password"` with no `password`, i.e. `password_prompt: true`):
+  the user types it into the Web terminal on every start. Otherwise have the
+  user type the secret into the `/config` page so it stays off the command line
+  and out of transcripts, and reference configs by name (`"ssh_config":"prod"`).
+  Never send a password in `POST /api/configs/{name}` unless the user explicitly
+  supplied it. Stored passwords are write-only and are never returned by any
+  endpoint.

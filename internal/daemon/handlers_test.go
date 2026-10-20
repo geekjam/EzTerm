@@ -38,6 +38,15 @@ func TestDaemonHelperProcess(t *testing.T) {
 			fmt.Fprintf(os.Stdout, "daemon-echo:%s\n", scanner.Text())
 		}
 		os.Exit(0)
+	case "prompt":
+		// Mimics sudo: a password prompt without a trailing newline, then the
+		// answer is echoed back so the test can see what reached the process.
+		fmt.Fprint(os.Stdout, "[sudo] password for daemon: ")
+		scanner := bufio.NewScanner(os.Stdin)
+		if scanner.Scan() {
+			fmt.Fprintf(os.Stdout, "daemon-answer:%s\n", scanner.Text())
+		}
+		os.Exit(0)
 	default:
 		os.Exit(2)
 	}

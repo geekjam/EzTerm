@@ -399,6 +399,25 @@ select:hover {
   line-height: 1.5;
 }
 
+.field .checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.field .checkbox input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .form-actions {
   justify-content: flex-end;
   margin-top: 24px;

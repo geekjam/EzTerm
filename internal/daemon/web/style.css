@@ -81,12 +81,86 @@ body {
   font-size: 12px;
   line-height: 20px;
   color: #b4c0c9;
+  overflow-wrap: anywhere;
+}
+
+.password-form {
+  margin-top: 14px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.password-form[hidden] {
+  display: none;
+}
+
+.password-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #8b9aa8;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.password-input {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid #33404a;
+  border-radius: 5px;
+  background: #111417;
+  color: #e7edf2;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.password-input:focus {
+  outline: 2px solid #f0b35b;
+  outline-offset: 1px;
+  border-color: #f0b35b;
+}
+
+.password-error {
+  margin: 8px 0 0;
+  color: #ff8b7d;
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.password-error[hidden] {
+  display: none;
+}
+
+.password-note {
+  margin: 8px 0 0;
+  color: #6d7d8a;
+  font-size: 11px;
+  line-height: 16px;
 }
 
 .modal-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   margin-top: 18px;
+}
+
+.modal-button[hidden] {
+  display: none;
+}
+
+.modal-button-quiet {
+  border-color: #33404a;
+  background: transparent;
+  color: #b4c0c9;
+}
+
+.modal-button-quiet:hover {
+  background: #262d34;
+  color: #e7edf2;
 }
 
 .modal-button {

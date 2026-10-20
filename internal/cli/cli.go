@@ -155,7 +155,7 @@ func usage(fs *flag.FlagSet, msg string) {
 	fmt.Fprint(os.Stderr, `Usage: ezterm [global flags] <command> [flags]
 
 Commands:
-  start        start a session from a saved config (--name <config>; Web terminal on, --noweb to disable; --rows/--cols/--timeout)
+  start        start a session from a saved config (--name <config>; Web terminal on, --noweb to disable; opens the browser when a password is required; --rows/--cols/--timeout)
   send         write input to a session (--text/--press-enter, or --press-key KEY)
   read         read output from a session
   attach       attach to a running PTY session (Ctrl+] to detach)
@@ -175,6 +175,10 @@ Global flags:
 
 Config web:
   ezterm config web [--open]  serve and optionally open the config page
+
+Config ssh:
+  ezterm config ssh --name <n> --host <h> --user <u> --auth password [--password <p>]
+  Omit --password to store nothing: the Web terminal asks for it on every start.
 `)
 }
 

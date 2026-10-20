@@ -69,6 +69,8 @@ internal/
 │   └── web/                      # xterm.js terminal + disconnect dialog + dark config page assets (go:embed)
 ├── message/
 │   └── message.go                # Per-session message index + content files
+├── prompt/
+│   └── prompt.go                 # Password-prompt rule table + output tail detector (sudo/su/passwd/ssh)
 ├── session/
 │   ├── session.go                # Session model, state machine, I/O, termination
 │   ├── manager.go                # Session registry + persistence + change notification
@@ -87,7 +89,7 @@ internal/
 
 Dependency direction (no cycles): `cli` → `daemon`/`configstore`/`sshconfig`;
 `daemon` → `session`/`configstore`/`message`/`storage`;
-`session` → `buffer`/`ansi`/`message`/`storage`/`sshclient`/`configstore`.
+`session` → `buffer`/`ansi`/`message`/`storage`/`sshclient`/`configstore`/`prompt`.
 
 Attach flow: the CLI `attach` command opens `GET /api/sessions/{id}/attach`
 (daemon streams the raw PTY byte stream, replaying the retained screen first),
@@ -106,12 +108,24 @@ before the normal closure, which the page uses to show a "Session disconnected"
 dialog; a broken transport produces a "Connection lost" dialog and a background
 reconnect instead.
 
+Password prompts are handled by the same WebSocket. An SSH config that uses
+password authentication with no stored password is created in
+`awaiting_password` state instead of dialing; `Session.pending_prompt` carries
+the prompt, and a `secret` text frame from a loopback peer supplies the
+password. Terminal output of every PTY session with the page enabled is scanned
+by `internal/prompt` (rule table anchored at the end of the last line); a match
+publishes a `terminal_password` prompt and the submitted secret is written
+directly to the PTY. Secrets are never logged, stored as messages, or echoed
+back over the socket.
+
 The config page at `/config` is embedded alongside the terminal page and uses
 `/api/configs` CRUD endpoints. It supports both local and SSH configs in a
 matching dark theme; SSH passwords are accepted for writes but omitted from
-all responses. `config web [--open]` ensures the daemon is running and prints
-(or opens) the page URL. Both the page and API inherit the daemon bind address
-and have no authentication, so the default localhost-only bind is important.
+all responses. An "Ask for password each time" option clears the stored secret
+and selects the Web-terminal prompt instead. `config web [--open]` ensures the
+daemon is running and prints (or opens) the page URL. Both the page and API
+inherit the daemon bind address and have no authentication, so the default
+localhost-only bind is important.
 
 ---
 

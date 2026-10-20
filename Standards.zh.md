@@ -92,9 +92,10 @@ docs: add HTTP API reference
 - CLI 是主要消费者；退出码稳定：`0` 成功、`1` 会话不存在、`2` 其他错误。`--json` 输出稳定且无人类装饰。
 - `send --press-key` 每次调用接受一个大小写不敏感的按键表达式。CLI 将 VT/xterm 字节通过 `InputRequest.Text` 发送，并固定 `PressEnter=false`；它与 `--text`、`--press-enter` 互斥，非法表达式返回退出码 `2`。
 - 向后兼容：删除或重命名端点/CLI flag 属于破坏性变更，需配合版本号。
-- **WebSocket 帧：** 二进制帧承载原始终端字节；文本帧承载 JSON 控制消息（浏览器 → 服务器的 `{"type":"resize",…}`，服务器 → 客户端在正常关闭前发送的 `{"type":"session-end"}`）。新增控制消息必须写入 `API.md`。
+- **WebSocket 帧：** 二进制帧承载原始终端字节；文本帧承载 JSON 控制消息。完整清单：浏览器 → 服务器的 `{"type":"resize",…}`、`{"type":"secret",…}`；服务器 → 客户端的 `{"type":"prompt",…}`、`{"type":"prompt-cleared"}`、`{"type":"secret-result",…}`、`{"type":"session-end"}`。新增控制消息必须写入 `API.md`。
+- **密码处理（`secret` 帧）：** 提交的密码仅接受 loopback 来源，并直接写入 SSH 拨号或 PTY。daemon 自身不记录它：不写 input 消息、不写 `slog`、不进 HTTP 响应、不进 `sessions.json`，也不会由 daemon 生成回显帧。（若程序本身回显输入，密码仍可能出现在终端流中；密码提示通常会关闭回显。）不得新增携带密码的 CLI 或 HTTP 通道，也不得从进程参数或环境变量读取密码。终端提示识别位于 `internal/prompt`，必须保持为纯逻辑、可测试的包（规则表 + 尾部检测器，无 I/O）。
 - **Web UI 文案使用英文**，与 CLI 输出和 API 文档一致；内嵌页面无构建步骤，保持依赖精简。
-- **安全：** 绝不提交凭据、密钥或私密材料。SSH profile 可包含用户 `~/.ezterm` 数据目录中的密码/密钥，但绝不能进入仓库或 profile 骨架。
+- **安全：** 绝不提交凭据、密钥或私密材料。SSH profile 可包含用户 `~/.ezterm` 数据目录中的密码/密钥，但绝不能进入仓库或 profile 骨架。编写文档或示例时优先使用「不存密码」的 profile（由 Web 终端在每次启动时询问）。
 
 ## 6. 依赖
 

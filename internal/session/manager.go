@@ -59,8 +59,11 @@ func (m *Manager) Restore() error {
 		close(s.logDone)
 		s.teardown = make(chan struct{})
 		close(s.teardown)
-		if s.Status == api.StatusStarting || s.Status == api.StatusRunning {
+		if s.Status == api.StatusStarting || s.Status == api.StatusRunning || s.Status == api.StatusAwaitingPassword {
 			s.Status = api.StatusExited
+			// No process survives a daemon restart, so a restored session cannot
+			// wait for a password anymore: drop the stale prompt.
+			s.Session.PendingPrompt = nil
 			now := time.Now().UTC()
 			s.FinishedAt = &now
 		}
@@ -138,7 +141,7 @@ func (m *Manager) Delete(id string) error {
 	if s == nil {
 		return fmt.Errorf("session %q not found", id)
 	}
-	if s.Info().Status == api.StatusRunning || s.Info().Status == api.StatusStarting {
+	if status := s.Info().Status; status == api.StatusRunning || status == api.StatusStarting || status == api.StatusAwaitingPassword {
 		return fmt.Errorf("cannot delete running session %q, terminate it first", id)
 	}
 	m.sessions.Delete(id)

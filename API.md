@@ -52,24 +52,46 @@ Get one session. Returns `404` if unknown.
 | `name` | string | defaults to `session-<id>` |
 | `command` / `args` | string / string[] | process to run; empty = default shell |
 | `mode` | `"pty"` \| `"pipe"` | PTY (echoes input) or plain pipes |
-| `status` | `"starting"` \| `"running"` \| `"exited"` \| `"terminated"` | lifecycle state |
-| `pid` | int | process ID (`0` for remote sessions) |
+| `status` | `"starting"` \| `"running"` \| `"awaiting_password"` \| `"exited"` \| `"terminated"` | lifecycle state |
+| `pid` | int | process ID (`0` for remote sessions and while awaiting a password) |
 | `exit_code` | int | meaningful once exited/terminated |
 | `rows` / `cols` | int | PTY dimensions |
 | `ssh_config` | string | `""`/`"internal"` = local; else profile name |
 | `web_url` | string | Web terminal URL (`/web/<id>`); empty when the page is disabled or the session is `pipe` mode |
+| `pending_prompt` | object, omitted | active password prompt; see below |
 | `created_at` / `updated_at` / `finished_at` | string / null | timestamps |
+
+`pending_prompt` is present only while the session waits for a secret. It
+never contains the secret itself:
+
+```json
+{"kind": "ssh_password", "label": "Password for deploy@db.example.com:22"}
+{"kind": "terminal_password", "label": "[sudo] password for deploy:"}
+```
+
+- `ssh_password` — the SSH config has password authentication but no stored
+  password; the session dials only after the secret is submitted.
+- `terminal_password` — the session output currently shows a password prompt
+  (`sudo`, `su`, `passwd`, nested `ssh`, …).
 
 ### `POST /api/sessions`
 
 Create and start a session. Returns `201` with the session, `400` for general
 creation errors (e.g. SSH dial failure or missing profile), or `409` when an
-explicit `web: true` is combined with pipe mode.
+explicit `web: true` is combined with pipe mode, or when the SSH config needs a
+password prompt but the Web terminal is disabled.
 
 The Web terminal is **enabled by default**: omit `web` to serve `/web/{id}` for
 a PTY session. An omitted `web` is silently dropped for pipe sessions (which
 cannot provide terminal semantics), while an explicit `web: false` disables the
 page for any mode.
+
+When `ssh_config` names a password-auth profile with **no stored password**, the
+session is created in `awaiting_password` state: the response is still `201`
+with `web_url` and `pending_prompt`, but no connection is dialed until the
+password is submitted over the WebSocket (see below). Such a config with
+`web: false` (or a pipe mode) returns `409` — there would be no way to supply
+the secret.
 
 ```json
 {"command": "python3", "args": ["-i"], "mode": "pty",
@@ -85,7 +107,7 @@ page for any mode.
 | `name` | string | optional session name |
 | `rows` / `cols` | int | PTY size (defaults 24×80) |
 | `ssh_config` | string | `""` or `"internal"` = local host; otherwise a profile name |
-| `web` | bool | Web terminal page; **defaults to `true`**. PTY only: omitted + pipe is ignored, explicit `true` + pipe returns `409`, `false` disables the page |
+| `web` | bool | Web terminal page; **defaults to `true`**. PTY only: omitted + pipe is ignored, explicit `true` + pipe returns `409`, `false` disables the page (and `409` if a password prompt would be needed) |
 | `dial_timeout_seconds` | int | SSH dial timeout (default 15) |
 
 ### `POST /api/sessions/{id}/input`
@@ -151,7 +173,9 @@ Allocate a new reader positioned at the current end of output. Returns `201`:
 ### `POST /api/sessions/{id}/terminate`
 
 Stop a session (graceful signal, then forced kill). Query parameters:
-`force=true` (skip grace) and `grace=<seconds>` (default 5).
+`force=true` (skip grace) and `grace=<seconds>` (default 5). An
+`awaiting_password` session has no process yet: terminating it ends the wait
+immediately (the output records that no password was supplied).
 
 ```json
 {"session": {"id": "a1b2c3d45678", "name": "dev", "status": "terminated", …}}
@@ -160,7 +184,7 @@ Stop a session (graceful signal, then forced kill). Query parameters:
 ### `DELETE /api/sessions/{id}`
 
 Remove a finished session. Returns `204`; `409` if the session is still
-running (terminate it first).
+running or `awaiting_password` (terminate it first).
 
 ### `POST /api/sessions/{id}/resize`
 
@@ -197,6 +221,11 @@ disconnected" when the process ended (the `session-end` frame below), and
 "Connection lost" when the WebSocket broke while the session kept running, in
 which case the page reconnects automatically and restores the terminal.
 
+When the session is waiting for a password (either kind of `pending_prompt`),
+the page shows a password dialog instead. The secret is typed by the user,
+sent over the WebSocket, and never stored: it is not written to messages, to
+the log, or back to the terminal.
+
 ### `GET /web/{id}/ws`
 
 WebSocket endpoint used by the embedded page. The same access rules as
@@ -209,24 +238,48 @@ Protocol (one bidirectional connection):
   included), starting with a replay of the retained screen.
 - Client → server **binary frames** carry raw input bytes (keystrokes,
   function keys, paste) and are written to the session stdin as-is.
-- Client → server **text frames** carry resize JSON:
+- Client → server **text frames** carry JSON control messages: `resize` and
+  `secret`.
+- Server → client **text frames** carry JSON status messages: `prompt`,
+  `prompt-cleared`, `secret-result`, and `session-end`.
+
+Client → server:
 
 ```json
 {"type": "resize", "rows": 40, "cols": 120}
+{"type": "secret", "text": "<password>"}
 ```
 
-- Server → client **text frames** carry status JSON. The only such message is
-  the session-end marker:
+- `resize` updates the PTY size. For an `awaiting_password` session it is
+  recorded and succeeds, so opening the page does not fail before dialing.
+- `secret` submits a password. It is only honored when the connection comes
+  from a loopback address; from any other peer the server replies with
+  `secret-result{ok:false}` and ignores the payload. The text is never
+  logged, never written as an input message, and never echoed back.
+
+Server → client:
 
 ```json
+{"type": "prompt", "kind": "ssh_password", "label": "Password for u@h:22"}
+{"type": "prompt-cleared"}
+{"type": "secret-result", "ok": true}
+{"type": "secret-result", "ok": false, "error": "ssh: authentication failed: …"}
 {"type": "session-end"}
 ```
 
-It is sent once, after the process exits and all retained output has been
-sent, immediately before the server closes the connection with a normal
-closure. A transport failure (network drop, daemon restart, page unload)
-never produces this frame, so a client can tell "the session finished" apart
-from "the connection broke".
+- `prompt` announces an active password prompt. It is replayed immediately
+  after the connection opens if one is already pending, so a reconnect (or a
+  page opened later) still shows the dialog.
+- `prompt-cleared` reports that the prompt disappeared: it was answered, or
+  the program printed a newline and moved on.
+- `secret-result` reports the outcome of a `secret` frame. On `ok: false` the
+  page shows the error and keeps the dialog; an `ssh_password` failure has
+  already ended the session, so `session-end` follows.
+- `session-end` is sent once, after the process exits and all retained output
+  has been sent, immediately before the server closes the connection with a
+  normal closure. A transport failure (network drop, daemon restart, page
+  unload) never produces this frame, so a client can tell "the session
+  finished" apart from "the connection broke".
 
 When the session ends and all retained output has been sent, the server closes
 the connection with a normal closure.
@@ -252,8 +305,13 @@ SSH configs never include the stored password). Returns `404` if unknown.
 {"name": "dev", "type": "local", "command": "bash", "args": ["-l"], "mode": "pty"}
 
 {"name": "prod", "type": "ssh", "host": "db.example.com", "port": 22,
- "user": "deploy", "auth_method": "password", "key_path": "", "shell": ""}
+ "user": "deploy", "auth_method": "password", "key_path": "", "shell": "",
+ "has_password": true, "password_prompt": false}
 ```
+
+`has_password` reports whether a password is stored (the value itself is never
+returned). `password_prompt` means the profile has password authentication but
+no stored password: the Web terminal asks for it on every start.
 
 ### `POST /api/configs/{name}`
 
@@ -267,20 +325,25 @@ requires a non-empty `command`.
 
 {"type": "ssh", "host": "db.example.com", "port": 22, "user": "deploy",
  "auth_method": "password", "password": "...", "key_path": "", "shell": "/bin/bash"}
+
+{"type": "ssh", "host": "db.example.com", "port": 22, "user": "deploy",
+ "auth_method": "password", "password_prompt": true}
 ```
 
 The SSH `password` is **write-only**: it is never returned by any endpoint. On
 an update to an existing password-auth SSH config, leaving `password` empty
-preserves the stored value. A new password-auth config with no password, or a
-key-auth config with no `key_path`, returns `400`. Config names match
-`[A-Za-z0-9_-]+`.
+preserves the stored value. Sending `password_prompt: true` clears any stored
+password and selects "ask in the Web terminal on every start"; a new
+password-auth config with neither a password nor a stored value is valid and
+also means the password is asked each time. A key-auth config with no
+`key_path` returns `400`. Config names match `[A-Za-z0-9_-]+`.
 
 | Condition | Response |
 |---|---|
 | success (create or update) | `200` with the saved `ConfigDetail` |
 | missing `command` for a local pipe config | `400` |
 | cross-type name already in use | `409` |
-| invalid type, missing SSH credential | `400` |
+| invalid type, missing key path | `400` |
 
 ### `DELETE /api/configs/{name}`
 
@@ -299,11 +362,17 @@ and has no authentication. Closing the page does not affect running sessions.
 
 ```
 POST /api/sessions          → starting → running
+POST /api/sessions (empty-password SSH) → awaiting_password
+  ├─ secret submitted, dial ok        → running
+  ├─ secret submitted, dial/auth fail → exited (exit code 1)
+  ├─ no secret within 300 s           → terminated (timeout note in output)
+  └─ POST .../terminate               → terminated
 process exits naturally     → exited
 POST .../terminate          → terminated (then exited semantics on teardown)
 DELETE /api/sessions/{id}   → removed from list (must be finished)
 ```
 
 Sessions that exit naturally stay in the list until deleted. On daemon restart,
-previously running sessions are restored as `exited` history records; messages
-remain readable from the data directory.
+previously running (and `awaiting_password`) sessions are restored as `exited`
+history records; messages remain readable from the data directory. A restored
+session never keeps a pending password prompt.

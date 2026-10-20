@@ -101,6 +101,10 @@
             <label for="password">Password</label>
             <input id="password" name="password" type="password" autocomplete="new-password" placeholder="Enter to set or replace">
             <p id="password-hint" class="hint">The stored password is never sent back to this page. Leave blank to keep it.</p>
+            <label class="checkbox" for="password-prompt">
+              <input id="password-prompt" name="password_prompt" type="checkbox">
+              <span>Ask for password each time (never store it)</span>
+            </label>
           </div>
           <div id="key-field" class="field hidden">
             <label for="key-path">Private key path <span class="required">*</span></label>

@@ -14,6 +14,7 @@
     sshFields: document.getElementById("ssh-fields"),
     passwordField: document.getElementById("password-field"),
     passwordHint: document.getElementById("password-hint"),
+    passwordPrompt: document.getElementById("password-prompt"),
     keyField: document.getElementById("key-field"),
     cancel: document.getElementById("cancel-button"),
     refresh: document.getElementById("refresh-button"),
@@ -33,6 +34,7 @@
 
   let currentType = "local";
   let editingName = "";
+  let editingHasPassword = false;
 
   function setStatus(message, kind) {
     elements.status.textContent = message || "";
@@ -138,14 +140,39 @@
     const password = elements.authMethod.value === "password";
     elements.passwordField.classList.toggle("hidden", !password);
     elements.keyField.classList.toggle("hidden", password);
+    updatePasswordPromptState();
+  }
+
+  // When "ask each time" is checked the stored password is meaningless, so the
+  // input is disabled and the hint explains where the prompt appears.
+  function updatePasswordPromptState() {
+    const asked = elements.passwordPrompt.checked;
+    elements.password.disabled = asked;
+    if (asked) {
+      elements.password.value = "";
+      elements.password.placeholder = "Asked in the Web terminal on every start";
+      elements.passwordHint.textContent = "The password will be asked in the Web terminal each time. Nothing is stored.";
+      return;
+    }
+    elements.password.placeholder = editingName ? "Leave blank to keep stored password" : "Enter to set or replace";
+    if (editingHasPassword) {
+      elements.passwordHint.textContent = "A password is already stored but is never returned. Leave blank to keep it.";
+    } else if (editingName) {
+      elements.passwordHint.textContent = "No password is stored. It will be asked in the Web terminal when the session starts.";
+    } else {
+      elements.passwordHint.textContent = "The stored password is never sent back to this page. Leave blank to keep it.";
+    }
   }
 
   function clearForm() {
     editingName = "";
+    editingHasPassword = false;
     elements.form.reset();
     elements.port.value = "22";
     elements.mode.value = "pty";
     elements.authMethod.value = "password";
+    elements.passwordPrompt.checked = false;
+    elements.password.disabled = false;
     elements.heading.textContent = "New configuration";
     elements.save.textContent = "Save configuration";
     elements.cancel.classList.add("hidden");
@@ -161,6 +188,7 @@
     try {
       const config = await request(`/api/configs/${encodeURIComponent(name)}`);
       editingName = config.name;
+      editingHasPassword = Boolean(config.has_password);
       elements.name.value = config.name || "";
       elements.name.disabled = true;
       elements.heading.textContent = `Edit ${config.name}`;
@@ -180,10 +208,8 @@
         elements.keyPath.value = config.key_path || "";
         elements.shell.value = config.default_shell || "";
         elements.password.value = "";
-        elements.password.placeholder = config.auth_method === "password" ? "Leave blank to keep stored password" : "Enter password to switch auth";
-        elements.passwordHint.textContent = config.auth_method === "password"
-          ? "A password is already stored but is never returned. Leave blank to keep it."
-          : "Passwords are write-only and are not returned by the API.";
+        elements.password.disabled = false;
+        elements.passwordPrompt.checked = Boolean(config.password_prompt);
         updateAuthFields();
       }
       setStatus(`Editing ${name}.`, "success");
@@ -212,7 +238,8 @@
       port: Number(elements.port.value || 22),
       user: elements.user.value,
       auth_method: elements.authMethod.value,
-      password: elements.password.value,
+      password: elements.password.disabled ? "" : elements.password.value,
+      password_prompt: elements.passwordPrompt.checked,
       key_path: elements.keyPath.value,
       shell: elements.shell.value,
     };
@@ -266,6 +293,7 @@
   elements.localType.addEventListener("click", () => setType("local"));
   elements.sshType.addEventListener("click", () => setType("ssh"));
   elements.authMethod.addEventListener("change", updateAuthFields);
+  elements.passwordPrompt.addEventListener("change", updatePasswordPromptState);
   elements.form.addEventListener("submit", saveConfig);
   elements.cancel.addEventListener("click", clearForm);
   elements.refresh.addEventListener("click", () => loadConfigs(true));

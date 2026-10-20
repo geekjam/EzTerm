@@ -12,7 +12,8 @@ import (
 // TestConfigSSHRequiresConnParams asserts that `config ssh --name <n>` (and
 // other partial invocations) are rejected instead of filling placeholder
 // defaults: the user must provide host, user, an explicit auth mode, and that
-// mode's connection parameter (password or key path).
+// mode's connection parameter (key path for key auth). A missing password is
+// valid: it selects "ask in the Web terminal on every start".
 func TestConfigSSHRequiresConnParams(t *testing.T) {
 	cases := []struct {
 		name string
@@ -23,7 +24,6 @@ func TestConfigSSHRequiresConnParams(t *testing.T) {
 		{"missing user", []string{"--name", "aihub", "--host", "h", "--auth", "password", "--password", "x"}, "--user is required"},
 		{"missing auth mode", []string{"--name", "aihub", "--host", "h", "--user", "u"}, "choose an auth mode"},
 		{"invalid auth mode", []string{"--name", "aihub", "--host", "h", "--user", "u", "--auth", "token"}, "choose an auth mode"},
-		{"password mode without password", []string{"--name", "aihub", "--host", "h", "--user", "u", "--auth", "password"}, "--password is required"},
 		{"key mode without key path", []string{"--name", "aihub", "--host", "h", "--user", "u", "--auth", "key"}, "--key-path is required"},
 	}
 	for _, tc := range cases {
@@ -60,19 +60,30 @@ func TestConfigSSHKeyMode(t *testing.T) {
 	}
 }
 
+// TestConfigSSHPasswordMode covers both password modes: with --password the
+// secret is stored, and without it the profile is saved with an empty password
+// so the Web terminal asks on every start.
 func TestConfigSSHPasswordMode(t *testing.T) {
 	store := configstore.NewStore(t.TempDir())
 	if code := configSSH(false, store, []string{
 		"--name", "box", "--host", "10.0.0.5", "--user", "root", "--auth", "password",
-	}); code == 0 {
-		t.Fatal("password mode without --password should fail")
+	}); code != 0 {
+		t.Fatalf("password mode without --password exit = %d, want 0", code)
 	}
+	p, err := store.GetSSH("box")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.AuthMethod != sshconfig.AuthPassword || p.Password != "" {
+		t.Fatalf("prompt-mode profile = %+v, want empty password", p)
+	}
+
 	if code := configSSH(false, store, []string{
 		"--name", "box", "--host", "10.0.0.5", "--user", "root", "--auth", "password", "--password", "pw",
 	}); code != 0 {
 		t.Fatalf("configSSH exit = %d, want 0", code)
 	}
-	p, err := store.GetSSH("box")
+	p, err = store.GetSSH("box")
 	if err != nil {
 		t.Fatal(err)
 	}

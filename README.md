@@ -67,7 +67,8 @@ go build -o ezterm .
   surfaced as the `ezterm daemon` subcommand.
 - **Saved launch configs** — define local and SSH sessions by a named config
   (`config local/ssh`) that `start` launches by name; SSH supports password or
-  private-key auth.
+  private-key auth. A password-auth config may omit the password: the Web
+  terminal then asks for it on every start, so nothing is stored.
 - **Stable `--json` output** — machine-readable results for skill/tool use.
 - **Multi-reader output buffer** — independent read cursors, retained history,
   and capped blocking reads.
@@ -87,10 +88,17 @@ go build -o ezterm .
   an in-page dialog and distinguishes a finished session from a dropped
   connection, which it reconnects on its own. The daemon remains local-only by
   default.
+- **Password prompts in the browser** — when an SSH config has no stored
+  password, or a session prints a password prompt (`sudo`, `su`, `passwd`,
+  nested `ssh`), the page pops up a password dialog. The user types the secret
+  there; it travels only through the WebSocket to the daemon, is never stored
+  in configs, input messages, logs, or responses, and is only accepted from a
+  loopback peer. `ezterm start` opens the page automatically in that case.
 - **Web config page** — `ezterm config web [--open]` (or `http://127.0.0.1:18766/config`)
   opens a dark-themed page to create, edit, and delete saved local/SSH configs
   in the browser, matching the Web terminal's look. SSH passwords are
-  write-only: the page never returns the stored password.
+  write-only: the page never returns the stored password, and the "Ask for
+  password each time" option stores nothing.
 
 ## Command Line
 
@@ -100,7 +108,7 @@ ezterm [global flags] <command> [flags]
 
 | Command | Description |
 |---|---|
-| `start` | Start a session by saved config name: `--name <config>`, optional `--noweb` (Web terminal is on by default), `--rows`, `--cols`, `--timeout` |
+| `start` | Start a session by saved config name: `--name <config>`, optional `--noweb` (Web terminal is on by default), `--rows`, `--cols`, `--timeout`. Opens the browser and prints `password required` when the session must wait for a password |
 | `send <id>` | Send input: `--text`, `--press-enter`, or one key/combination with `--press-key` (for example `ctrl+c`, `enter`, `f5`) |
 | `read <id>` | Read new output: `--reader`, `--timeout <sec>`, `--raw`, `--max-bytes` |
 | `attach <id>` | Attach to a running PTY session in raw mode; `Ctrl+]` detaches |
@@ -148,6 +156,11 @@ ezterm send <id> --press-key ctrl+c
 # SSH by config.
 ezterm config ssh --name prod --host db.example.com --user deploy --auth key --key-path ~/.ssh/id_ed25519
 ezterm start --name prod
+
+# SSH with a password prompt: omit --password and type it in the browser page.
+# Nothing is stored; ezterm start opens the page automatically.
+ezterm config ssh --name box --host 10.0.0.5 --user root --auth password
+ezterm start --name box
 
 # Manage configs.
 ezterm config list

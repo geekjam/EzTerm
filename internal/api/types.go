@@ -14,29 +14,50 @@ const (
 type Status string
 
 const (
-	StatusStarting   Status = "starting"
-	StatusRunning    Status = "running"
-	StatusExited     Status = "exited"
-	StatusTerminated Status = "terminated"
+	StatusStarting Status = "starting"
+	StatusRunning  Status = "running"
+	// StatusAwaitingPassword marks a remote session that was created without a
+	// stored password. It dials only after the user submits the secret from the
+	// Web terminal page.
+	StatusAwaitingPassword Status = "awaiting_password"
+	StatusExited           Status = "exited"
+	StatusTerminated       Status = "terminated"
 )
+
+// Prompt kinds reported in Session.PendingPrompt.
+const (
+	// PromptKindSSHPassword asks for the SSH login password before dialing.
+	PromptKindSSHPassword = "ssh_password"
+	// PromptKindTerminalPassword forwards a password prompt seen in the
+	// session's terminal output (sudo, su, passwd, ssh, ...).
+	PromptKindTerminalPassword = "terminal_password"
+)
+
+// Prompt describes a password prompt the Web terminal page should display. It
+// never contains a secret: Label is the human-readable prompt text.
+type Prompt struct {
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+}
 
 // Session is the JSON representation of a managed process session.
 type Session struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	Command    string     `json:"command"`
-	Args       []string   `json:"args"`
-	Mode       Mode       `json:"mode"`
-	Status     Status     `json:"status"`
-	PID        int        `json:"pid"`
-	ExitCode   int        `json:"exit_code"`
-	Rows       int        `json:"rows"`
-	Cols       int        `json:"cols"`
-	SSHConfig  string     `json:"ssh_config"`
-	WebURL     string     `json:"web_url"` // Web terminal URL; empty when not enabled
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	FinishedAt *time.Time `json:"finished_at"`
+	ID            string     `json:"id"`
+	Name          string     `json:"name"`
+	Command       string     `json:"command"`
+	Args          []string   `json:"args"`
+	Mode          Mode       `json:"mode"`
+	Status        Status     `json:"status"`
+	PID           int        `json:"pid"`
+	ExitCode      int        `json:"exit_code"`
+	Rows          int        `json:"rows"`
+	Cols          int        `json:"cols"`
+	SSHConfig     string     `json:"ssh_config"`
+	WebURL        string     `json:"web_url"` // Web terminal URL; empty when not enabled
+	PendingPrompt *Prompt    `json:"pending_prompt,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	FinishedAt    *time.Time `json:"finished_at"`
 }
 
 // Message is a persisted input, output, or system event.
@@ -132,35 +153,41 @@ type ConfigSummary struct {
 
 // ConfigDetail is the full, non-secret representation of a single launch
 // config, including fields the list summary omits (such as a local config's
-// args). The stored SSH password is never included in this wire type.
+// args). The stored SSH password is never included in this wire type:
+// HasPassword only reports whether one is stored, and PasswordPrompt reports
+// that the password is requested in the Web terminal on every start.
 type ConfigDetail struct {
-	Name       string   `json:"name"`
-	Type       string   `json:"type"`
-	Command    string   `json:"command,omitempty"`
-	Args       []string `json:"args,omitempty"`
-	Mode       string   `json:"mode,omitempty"`
-	Host       string   `json:"host,omitempty"`
-	Port       int      `json:"port,omitempty"`
-	User       string   `json:"user,omitempty"`
-	AuthMethod string   `json:"auth_method,omitempty"`
-	KeyPath    string   `json:"key_path,omitempty"`
-	Shell      string   `json:"shell,omitempty"`
+	Name           string   `json:"name"`
+	Type           string   `json:"type"`
+	Command        string   `json:"command,omitempty"`
+	Args           []string `json:"args,omitempty"`
+	Mode           string   `json:"mode,omitempty"`
+	Host           string   `json:"host,omitempty"`
+	Port           int      `json:"port,omitempty"`
+	User           string   `json:"user,omitempty"`
+	AuthMethod     string   `json:"auth_method,omitempty"`
+	KeyPath        string   `json:"key_path,omitempty"`
+	Shell          string   `json:"shell,omitempty"`
+	HasPassword    bool     `json:"has_password"`
+	PasswordPrompt bool     `json:"password_prompt"`
 }
 
 // ConfigUpsertRequest is the request body for POST /api/configs/{name}.
 // Type discriminates a local from an ssh config. Password is write-only: an
 // empty password on an existing password-auth SSH config preserves the stored
-// value (used when the Web page edits a config without re-typing the secret).
+// value unless PasswordPrompt is true, which clears it so the password is
+// requested in the Web terminal on every start.
 type ConfigUpsertRequest struct {
-	Type       string   `json:"type"`
-	Command    string   `json:"command,omitempty"`
-	Args       []string `json:"args,omitempty"`
-	Mode       string   `json:"mode,omitempty"`
-	Host       string   `json:"host,omitempty"`
-	Port       int      `json:"port,omitempty"`
-	User       string   `json:"user,omitempty"`
-	AuthMethod string   `json:"auth_method,omitempty"`
-	Password   string   `json:"password,omitempty"`
-	KeyPath    string   `json:"key_path,omitempty"`
-	Shell      string   `json:"shell,omitempty"`
+	Type           string   `json:"type"`
+	Command        string   `json:"command,omitempty"`
+	Args           []string `json:"args,omitempty"`
+	Mode           string   `json:"mode,omitempty"`
+	Host           string   `json:"host,omitempty"`
+	Port           int      `json:"port,omitempty"`
+	User           string   `json:"user,omitempty"`
+	AuthMethod     string   `json:"auth_method,omitempty"`
+	Password       string   `json:"password,omitempty"`
+	KeyPath        string   `json:"key_path,omitempty"`
+	Shell          string   `json:"shell,omitempty"`
+	PasswordPrompt bool     `json:"password_prompt,omitempty"`
 }

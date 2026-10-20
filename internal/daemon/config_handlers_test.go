@@ -127,11 +127,37 @@ func TestConfigCRUDEndpoints(t *testing.T) {
 		t.Fatalf("cross-type create status=%d, want 409", resp.StatusCode)
 	}
 
-	// New SSH config with password auth but no password -> 400.
+	// New SSH config with password auth but no password is valid: it selects the
+	// "ask in the Web terminal every start" mode. The detail exposes only
+	// has_password=false and password_prompt=true.
 	noSecret := api.ConfigUpsertRequest{Type: "ssh", Host: "h", User: "u", AuthMethod: "password"}
-	resp = doJSON(t, client, http.MethodPost, server.URL+"/api/configs/newpw", noSecret, nil)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("missing password status=%d, want 400", resp.StatusCode)
+	var promptDetail api.ConfigDetail
+	resp = doJSON(t, client, http.MethodPost, server.URL+"/api/configs/newpw", noSecret, &promptDetail)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("prompt-mode create status=%d, want 200", resp.StatusCode)
+	}
+	if promptDetail.HasPassword || !promptDetail.PasswordPrompt {
+		t.Fatalf("prompt-mode detail = %+v, want has_password=false password_prompt=true", promptDetail)
+	}
+	promptProfile, err := cfgStore.GetSSH("newpw")
+	if err != nil || promptProfile.Password != "" {
+		t.Fatalf("prompt-mode profile=%+v err=%v", promptProfile, err)
+	}
+
+	// An explicit password_prompt clears a previously stored secret.
+	clearReq := sshReq
+	clearReq.Password = ""
+	clearReq.PasswordPrompt = true
+	resp = doJSON(t, client, http.MethodPost, server.URL+"/api/configs/prod", clearReq, &promptDetail)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("clear password status=%d, want 200", resp.StatusCode)
+	}
+	if promptDetail.HasPassword || !promptDetail.PasswordPrompt {
+		t.Fatalf("cleared detail = %+v", promptDetail)
+	}
+	profile, _ = cfgStore.GetSSH("prod")
+	if profile.Password != "" {
+		t.Fatalf("password_prompt did not clear the stored secret: %+v", profile)
 	}
 
 	// Invalid type -> 400.

@@ -69,6 +69,8 @@ internal/
 │   └── web/                      # xterm.js 终端 + 断开弹窗 + 深色配置页资源（go:embed）
 ├── message/
 │   └── message.go                # 每会话消息索引 + 内容文件持久化
+├── prompt/
+│   └── prompt.go                 # 密码提示规则表 + 输出尾部检测器（sudo/su/passwd/ssh）
 ├── session/
 │   ├── session.go                # 会话模型、状态机、输入/输出、终止
 │   ├── manager.go                # 会话注册表 + 持久化 + 通知
@@ -87,13 +89,15 @@ internal/
 
 模块内按职责分包，无循环依赖：`cli` → `daemon`/`configstore`/`sshconfig`；
 `daemon` → `session`/`configstore`/`message`/`storage`；
-`session` → `buffer`/`ansi`/`message`/`storage`/`sshclient`/`configstore`。
+`session` → `buffer`/`ansi`/`message`/`storage`/`sshclient`/`configstore`/`prompt`。
 
 attach 流程：CLI `attach` 命令打开 `GET /api/sessions/{id}/attach`（daemon 流式推送原始 PTY 字节流，先重放保留画面），按键通过 `POST /api/sessions/{id}/input`（`press_enter=false`）转发，窗口尺寸变化通过 `POST /api/sessions/{id}/resize` 同步；`Ctrl+]` 本地脱离而不终止会话。
 
 Web 终端复用同一套 attach 原语（输出用 `AttachReader`/`ReadOutput`，输入用 `SendInput`/`Resize`），经 `/web/{id}/ws` 的 WebSocket 连接，因此浏览器标签页与 `attach` 客户端共享同一 PTY 画面。PTY 会话默认开启（`start` 会打印 URL，`--noweb` / `web: false` 可关闭），pipe 模式永不提供。进程退出时，daemon 在正常关闭前发送 `{"type":"session-end"}` 文本帧，页面据此弹出「Session disconnected」；传输层断开则弹出「Connection lost」并在后台自动重连。
 
-`/config` 配置页面与终端页面一起内嵌，使用 `/api/configs` CRUD 端点，支持匹配深色主题的 local/SSH 配置管理。SSH 密码可用于写入，但不会出现在任何响应中。`config web [--open]` 会确保 daemon 运行并打印（或打开）页面 URL。页面与 API 继承 daemon 的绑定地址且无认证，因此默认仅绑定本机非常重要。
+密码提示同样走这条 WebSocket。password 认证但未存密码的 SSH 配置会以 `awaiting_password` 状态创建而不拨号；`Session.pending_prompt` 携带提示内容，来自 loopback 的 `secret` 文本帧提供密码。开启页面且为 PTY 的会话，其输出会由 `internal/prompt` 扫描（规则表锚定最后一行行尾）；命中则发布 `terminal_password` 提示，提交的密码直写 PTY。密码不写日志、不存为消息、不回显到 socket。
+
+`/config` 配置页面与终端页面一起内嵌，使用 `/api/configs` CRUD 端点，支持匹配深色主题的 local/SSH 配置管理。SSH 密码可用于写入，但不会出现在任何响应中；勾选「每次询问」会清空已存密码并改用 Web 终端提示。`config web [--open]` 会确保 daemon 运行并打印（或打开）页面 URL。页面与 API 继承 daemon 的绑定地址且无认证，因此默认仅绑定本机非常重要。
 
 ---
 

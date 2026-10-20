@@ -133,6 +133,11 @@ func (h *Handler) handleGetSession(w http.ResponseWriter, r *http.Request) {
 // web:true with pipe mode returns 409 so the caller learns its request cannot
 // be honored, and web:false disables the page. For enabled sessions the daemon
 // advertises the Web terminal URL on web_url.
+//
+// An SSH config that authenticates with a password but stores none creates an
+// awaiting_password session: it is dialed only after the password is submitted
+// from the Web page. Disabling the page for such a config returns 409, because
+// there would be no way to supply the secret.
 func (h *Handler) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	var req api.CreateSessionRequest
 	if !decodeBody(w, r, &req) {
@@ -165,6 +170,11 @@ func (h *Handler) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "command is required for local pipe sessions")
 		return
 	}
+	if h.requiresWebPassword(cfg.SSHConfig) && !web {
+		writeError(w, http.StatusConflict,
+			"ssh config %q requires a password prompt; the web terminal must stay enabled", cfg.SSHConfig)
+		return
+	}
 	s, err := h.mgr.Create(cfg)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "create session: %v", err)
@@ -175,6 +185,20 @@ func (h *Handler) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		h.mgr.Persist()
 	}
 	writeJSON(w, http.StatusCreated, s.Info())
+}
+
+// requiresWebPassword reports whether the named SSH config authenticates with
+// a password that is not stored, so the session can only start after the user
+// submits it from the Web terminal page.
+func (h *Handler) requiresWebPassword(sshConfig string) bool {
+	if !session.IsRemote(sshConfig) || h.cfgStore == nil {
+		return false
+	}
+	profile, err := h.cfgStore.GetSSH(sshConfig)
+	if err != nil {
+		return false // session creation reports the load failure itself
+	}
+	return profile.AuthMethod == sshconfig.AuthPassword && strings.TrimSpace(profile.Password) == ""
 }
 
 func (h *Handler) handleInput(w http.ResponseWriter, r *http.Request) {
@@ -405,7 +429,12 @@ func (h *Handler) handleUpsertConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if profile.AuthMethod == sshconfig.AuthPassword {
-			if strings.TrimSpace(profile.Password) == "" && exists {
+			switch {
+			case req.PasswordPrompt:
+				// Explicitly forget the stored secret: the Web terminal asks for
+				// it on every start.
+				profile.Password = ""
+			case strings.TrimSpace(profile.Password) == "" && exists:
 				previous, getErr := h.cfgStore.GetSSH(name)
 				if getErr != nil {
 					writeConfigStoreError(w, "read existing SSH config", getErr)
@@ -415,10 +444,8 @@ func (h *Handler) handleUpsertConfig(w http.ResponseWriter, r *http.Request) {
 					profile.Password = previous.Password
 				}
 			}
-			if strings.TrimSpace(profile.Password) == "" {
-				writeError(w, http.StatusBadRequest, "password is required for password authentication (leave it blank only when retaining an existing password)")
-				return
-			}
+			// An empty password with nothing stored is valid: it means "ask in
+			// the Web terminal each time" rather than "no authentication".
 		} else {
 			// A key-auth update must not retain an old password in the stored
 			// profile or accidentally expose two authentication methods.
@@ -481,14 +508,16 @@ func (h *Handler) getConfigDetail(name string) (api.ConfigDetail, error) {
 		return api.ConfigDetail{}, err
 	}
 	return api.ConfigDetail{
-		Name:       name,
-		Type:       string(configstore.TypeSSH),
-		Host:       profile.Host,
-		Port:       profile.Port,
-		User:       profile.User,
-		AuthMethod: string(profile.AuthMethod),
-		KeyPath:    profile.KeyPath,
-		Shell:      profile.DefaultShell,
+		Name:           name,
+		Type:           string(configstore.TypeSSH),
+		Host:           profile.Host,
+		Port:           profile.Port,
+		User:           profile.User,
+		AuthMethod:     string(profile.AuthMethod),
+		KeyPath:        profile.KeyPath,
+		Shell:          profile.DefaultShell,
+		HasPassword:    profile.Password != "",
+		PasswordPrompt: profile.AuthMethod == sshconfig.AuthPassword && profile.Password == "",
 	}, nil
 }
 

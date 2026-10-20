@@ -103,6 +103,10 @@ func parseCommandArgs(fs *flag.FlagSet, args []string) []string {
 	return positionals
 }
 
+// openBrowser opens a URL in the user's default browser. It is a variable so
+// tests can observe the call without launching a real browser.
+var openBrowser = openURL
+
 func cmdStart(c *client, jsonOut bool, dataDir string, args []string) int {
 	fs := flag.NewFlagSet("ezterm start", flag.ContinueOnError)
 	name := fs.String("name", "", "saved config name to start")
@@ -155,6 +159,16 @@ func cmdStart(c *client, jsonOut bool, dataDir string, args []string) int {
 	code := printSession(jsonOut, session, "created")
 	if session.WebURL != "" && !jsonOut {
 		fmt.Printf("web terminal: %s\n", session.WebURL)
+	}
+	if session.Status == api.StatusAwaitingPassword && !jsonOut {
+		// The password must be typed by the user into the page: it is never
+		// sent through the CLI or stored in a config.
+		fmt.Println("password required: enter it in the browser page")
+		if session.WebURL != "" {
+			if err := openBrowser(session.WebURL); err != nil {
+				fmt.Fprintf(os.Stderr, "ezterm: open browser: %v\n", err)
+			}
+		}
 	}
 	return code
 }

@@ -53,7 +53,7 @@ go build -o ezterm .
 
 - **交互式会话** — 以 PTY 或管道模式启动进程，跨多轮发送输入、阻塞或非阻塞读取输出。
 - **自动拉起 daemon** — 后台服务在首次使用时启动，同时提供 `ezterm daemon` 子命令。
-- **保存的启动配置** — 通过 `config local/ssh` 定义命名的本地或 SSH 会话配置，再由 `start --name` 启动；SSH 支持密码或私钥认证。
+- **保存的启动配置** — 通过 `config local/ssh` 定义命名的本地或 SSH 会话配置，再由 `start --name` 启动；SSH 支持密码或私钥认证。密码认证可以省略密码：此时 Web 终端会在每次启动时询问，不落盘。
 - **稳定的 `--json` 输出** — 面向 Skill/工具的可解析输出。
 - **多游标输出缓冲** — 每个 reader 独立游标、保留历史、可设上限的阻塞读取。
 - **持久化** — 数据目录保存 `sessions.json` 与会话消息日志；重启后历史会话恢复为已结束记录。
@@ -61,7 +61,8 @@ go build -o ezterm .
 - **共享终端 attach** — `attach <id>` 以 raw mode 进入会话的实时 PTY 画面（类似 `tmux attach`）：按键与窗口尺寸自动转发，输出实时流回，`Ctrl+]` 脱离而不终止会话。
 - **精确按键输入** — `send --press-key` 发送单个标准终端按键或组合键（如 `ctrl+c`、`enter`、`ctrl+shift+up`、`f5`），不追加换行；PTY 与 pipe 会话均可使用。
 - **本机 Web 终端** — 每个用 `start` 启动的 PTY 会话默认提供 xterm.js 浏览器画面，通过 WebSocket 实时传输输出、输入、粘贴和尺寸；`--noweb` 可关闭该页面。断开时页面用内嵌弹窗提示，并区分「会话结束」与「连接断开」（后者自动重连）。daemon 默认只监听本机。
-- **本机配置网页** — `ezterm config web [--open]`（或 `http://127.0.0.1:18766/config`）在浏览器中打开深色主题页面，用于创建、编辑、删除已保存的本地/SSH 配置，配色与 Web 终端一致。SSH 密码为只写：页面永不回显已存密码。
+- **浏览器内密码提示** — SSH 配置未存密码，或会话输出出现密码提示（`sudo`、`su`、`passwd`、嵌套 `ssh`）时，页面弹出密码输入框。密码由用户亲手输入，只经 WebSocket 直达 daemon：不写入配置、input 消息、日志或 HTTP 响应，且仅接受 loopback 来源。`ezterm start` 遇到这种情况会自动打开该页面。
+- **本机配置网页** — `ezterm config web [--open]`（或 `http://127.0.0.1:18766/config`）在浏览器中打开深色主题页面，用于创建、编辑、删除已保存的本地/SSH 配置，配色与 Web 终端一致。SSH 密码为只写：页面永不回显已存密码；勾选「每次询问」则完全不存密码。
 
 ## 命令行
 
@@ -71,7 +72,7 @@ ezterm [全局参数] <命令> [参数]
 
 | 命令 | 说明 |
 |---|---|
-| `start` | 按保存的配置启动会话：`--name <配置名>`，可选 `--noweb`（默认开启 Web 终端）、`--rows`、`--cols`、`--timeout` |
+| `start` | 按保存的配置启动会话：`--name <配置名>`，可选 `--noweb`（默认开启 Web 终端）、`--rows`、`--cols`、`--timeout`。需要密码时会自动打开浏览器并打印 `password required` |
 | `send <id>` | 发送输入：`--text`、`--press-enter`，或用 `--press-key` 发送单个按键/组合键（如 `ctrl+c`、`enter`、`f5`） |
 | `read <id>` | 读取新输出：`--reader`、`--timeout <秒>`、`--raw`、`--max-bytes` |
 | `attach <id>` | 以 raw mode 进入运行中的 PTY 会话；`Ctrl+]` 脱离 |
@@ -115,6 +116,10 @@ ezterm send <id> --press-key ctrl+c
 # 通过保存的配置连接 SSH。
 ezterm config ssh --name prod --host db.example.com --user deploy --auth key --key-path ~/.ssh/id_ed25519
 ezterm start --name prod
+
+# 需要密码的 SSH：省略 --password，改在浏览器页面输入（不落盘，start 会自动开页）。
+ezterm config ssh --name box --host 10.0.0.5 --user root --auth password
+ezterm start --name box
 
 # 管理配置。
 ezterm config list

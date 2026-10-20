@@ -48,19 +48,32 @@ CLI 用于探测 daemon 是否存活。
 | `name` | string | 默认 `session-<id>` |
 | `command` / `args` | string / string[] | 要运行的进程；空 = 默认 shell |
 | `mode` | `"pty"` \| `"pipe"` | PTY（回显输入）或管道 |
-| `status` | `"starting"` \| `"running"` \| `"exited"` \| `"terminated"` | 生命周期状态 |
-| `pid` | int | 进程 ID（远端为 0） |
+| `status` | `"starting"` \| `"running"` \| `"awaiting_password"` \| `"exited"` \| `"terminated"` | 生命周期状态 |
+| `pid` | int | 进程 ID（远端与等待密码时为 0） |
 | `exit_code` | int | 结束后有意义 |
 | `rows` / `cols` | int | PTY 尺寸 |
 | `ssh_config` | string | `""`/`"internal"` = 本机；否则为 profile 名 |
 | `web_url` | string | Web 终端 URL（`/web/<id>`）；页面被关闭或会话为 `pipe` 模式时为空串 |
+| `pending_prompt` | object，省略 | 当前密码提示，见下 |
 | `created_at` / `updated_at` / `finished_at` | string / null | 时间戳 |
+
+`pending_prompt` 仅在会话等待密码时出现，本身**不含密码**：
+
+```json
+{"kind": "ssh_password", "label": "Password for deploy@db.example.com:22"}
+{"kind": "terminal_password", "label": "[sudo] password for deploy:"}
+```
+
+- `ssh_password` —— SSH 配置使用密码认证但没有已存密码；提交密码后才拨号。
+- `terminal_password` —— 会话输出当前正显示密码提示（`sudo`、`su`、`passwd`、嵌套 `ssh` 等）。
 
 ### `POST /api/sessions`
 
-创建并启动会话。成功返回 `201` + 会话对象；一般创建错误（如 SSH 连接失败、profile 缺失）返回 `400`，显式 `web: true` 搭配 pipe 模式返回 `409`。
+创建并启动会话。成功返回 `201` + 会话对象；一般创建错误（如 SSH 连接失败、profile 缺失）返回 `400`；显式 `web: true` 搭配 pipe 模式返回 `409`；SSH 配置需要密码提示但 Web 终端被关闭时同样返回 `409`。
 
 Web 终端**默认开启**：省略 `web` 即为 PTY 会话提供 `/web/{id}`。pipe 会话省略 `web` 时会被静默忽略（无法提供终端语义），显式 `web: false` 则在任何模式下关闭该页面。
+
+当 `ssh_config` 指向一个 password 认证但**未存密码**的 profile 时，会话以 `awaiting_password` 状态创建：仍返回 `201`，带 `web_url` 与 `pending_prompt`，但在通过 WebSocket 提交密码之前不会拨号。该配置搭配 `web: false`（或 pipe 模式）返回 `409`，否则将无处输入密码。
 
 ```json
 {"command": "python3", "args": ["-i"], "mode": "pty",
@@ -76,7 +89,7 @@ Web 终端**默认开启**：省略 `web` 即为 PTY 会话提供 `/web/{id}`。
 | `name` | string | 可选会话名 |
 | `rows` / `cols` | int | PTY 尺寸（默认 24×80） |
 | `ssh_config` | string | `""`/`"internal"` = 本机；否则为 profile 名 |
-| `web` | bool | Web 终端页面；**默认 `true`**。仅 PTY：省略 + pipe 自动忽略，显式 `true` + pipe 返回 `409`，`false` 关闭页面 |
+| `web` | bool | Web 终端页面；**默认 `true`**。仅 PTY：省略 + pipe 自动忽略，显式 `true` + pipe 返回 `409`，`false` 关闭页面（若需要密码提示则返回 `409`） |
 | `dial_timeout_seconds` | int | SSH 连接超时（默认 15） |
 
 ### `POST /api/sessions/{id}/input`
@@ -130,7 +143,7 @@ CLI 的 `--press-key` 字节（键名、控制字节、CSI 序列）通过 `text
 
 ### `POST /api/sessions/{id}/terminate`
 
-停止会话（先优雅后强制）。查询参数：`force=true`（跳过优雅期）、`grace=<秒>`（默认 5）。
+停止会话（先优雅后强制）。查询参数：`force=true`（跳过优雅期）、`grace=<秒>`（默认 5）。`awaiting_password` 会话尚无进程：terminate 会立即结束等待，并在输出中说明未提供密码。
 
 ```json
 {"session": {"id": "a1b2c3d45678", "name": "dev", "status": "terminated", …}}
@@ -138,7 +151,7 @@ CLI 的 `--press-key` 字节（键名、控制字节、CSI 序列）通过 `text
 
 ### `DELETE /api/sessions/{id}`
 
-删除已结束的会话。返回 `204`；仍在运行返回 `409`（请先 terminate）。
+删除已结束的会话。返回 `204`；仍在运行或处于 `awaiting_password` 返回 `409`（请先 terminate）。
 
 ### `POST /api/sessions/{id}/resize`
 
@@ -165,6 +178,8 @@ CLI 的 `--press-key` 字节（键名、控制字节、CSI 序列）通过 `text
 
 页面用内嵌模态弹窗提示断开：进程结束时提示「Session disconnected」（即下文的 `session-end` 帧）；WebSocket 断开但会话仍在运行时提示「Connection lost」，并自动重连，重连成功后恢复终端。
 
+会话等待密码时（任一 `pending_prompt`），页面改为显示密码输入框。密码由用户亲手输入、经 WebSocket 提交，**不写 messages、不写日志、不回显到终端**。
+
 ### `GET /web/{id}/ws`
 
 嵌入式页面使用的 WebSocket 端点。访问规则与 `GET /web/{id}` 相同。默认接受请求 Host 的 origin，仅监听 daemon 绑定地址。
@@ -173,19 +188,33 @@ CLI 的 `--press-key` 字节（键名、控制字节、CSI 序列）通过 `text
 
 - 服务器 → 客户端 **二进制帧** 携带原始 PTY 输出字节（含 ANSI），先重放已保留画面。
 - 客户端 → 服务器 **二进制帧** 携带原始输入字节（按键、功能键、粘贴），原样写入会话 stdin。
-- 客户端 → 服务器 **文本帧** 携带 resize JSON：
+- 客户端 → 服务器 **文本帧** 携带 JSON 控制消息：`resize` 与 `secret`。
+- 服务器 → 客户端 **文本帧** 携带 JSON 状态消息：`prompt`、`prompt-cleared`、`secret-result`、`session-end`。
+
+客户端 → 服务器：
 
 ```json
 {"type": "resize", "rows": 40, "cols": 120}
+{"type": "secret", "text": "<密码>"}
 ```
 
-- 服务器 → 客户端 **文本帧** 携带状态 JSON，目前仅有会话结束标记：
+- `resize` 更新 PTY 尺寸。`awaiting_password` 会话会记录尺寸并返回成功，因此页面一打开不会因尚未拨号而报错。
+- `secret` 提交密码。仅当连接来自 loopback 地址时才处理；其他来源会收到 `secret-result{ok:false}` 且内容被忽略。该文本不写日志、不写成 input 消息、不回显。
+
+服务器 → 客户端：
 
 ```json
+{"type": "prompt", "kind": "ssh_password", "label": "Password for u@h:22"}
+{"type": "prompt-cleared"}
+{"type": "secret-result", "ok": true}
+{"type": "secret-result", "ok": false, "error": "ssh: authentication failed: …"}
 {"type": "session-end"}
 ```
 
-该帧在进程退出、保留输出全部发送完毕后发送一次，随后服务器以正常关闭码关闭连接。传输层断开（网络中断、daemon 重启、页面关闭）**不会**发送该帧，因此客户端可区分「会话结束」与「连接断开」。
+- `prompt` 通告当前密码提示。连接建立时若已有待处理提示，会立即重放，因此重连或后打开的页面仍能弹出对话框。
+- `prompt-cleared` 表示提示消失：已被回答，或程序换行继续输出。
+- `secret-result` 报告 `secret` 帧的结果。`ok: false` 时页面显示错误并保留对话框；`ssh_password` 失败时会话已结束，随后会收到 `session-end`。
+- `session-end` 在进程退出、保留输出全部发送完毕后发送一次，随后服务器以正常关闭码关闭连接。传输层断开（网络中断、daemon 重启、页面关闭）**不会**发送该帧，因此客户端可区分「会话结束」与「连接断开」。
 
 会话结束且保留输出全部发送完毕后，服务器以正常关闭码关闭连接。
 
@@ -209,8 +238,11 @@ CLI 的 `--press-key` 字节（键名、控制字节、CSI 序列）通过 `text
 {"name": "dev", "type": "local", "command": "bash", "args": ["-l"], "mode": "pty"}
 
 {"name": "prod", "type": "ssh", "host": "db.example.com", "port": 22,
- "user": "deploy", "auth_method": "password", "key_path": "", "shell": ""}
+ "user": "deploy", "auth_method": "password", "key_path": "", "shell": "",
+ "has_password": true, "password_prompt": false}
 ```
+
+`has_password` 只表示是否已存密码（永不返回值本身）。`password_prompt` 表示该 profile 使用密码认证但没有已存密码：每次启动都在 Web 终端询问。
 
 ### `POST /api/configs/{name}`
 
@@ -223,14 +255,14 @@ CLI 的 `--press-key` 字节（键名、控制字节、CSI 序列）通过 `text
  "auth_method": "password", "password": "...", "key_path": "", "shell": "/bin/bash"}
 ```
 
-SSH `password` 为**只写**：任何端点都不会返回它。更新既有 password 认证的 SSH 配置时，将 `password` 留空会保留已存值。新建 password 认证配置但无密码、或 key 认证配置但无 `key_path`，返回 `400`。配置名须匹配 `[A-Za-z0-9_-]+`。
+SSH `password` 为**只写**：任何端点都不会返回它。更新既有 password 认证的 SSH 配置时，将 `password` 留空会保留已存值。发送 `password_prompt: true` 会清空已存密码并切到「每次启动在 Web 终端询问」；新建 password 认证配置既无密码也无已存值时同样合法，语义即为每次询问。key 认证配置但无 `key_path`，返回 `400`。配置名须匹配 `[A-Za-z0-9_-]+`。
 
 | 条件 | 响应 |
 |---|---|
 | 成功（创建或更新） | `200` + 保存后的 `ConfigDetail` |
 | local pipe 配置缺少 `command` | `400` |
 | 跨类型重名 | `409` |
-| 非法类型、缺失 SSH 凭据 | `400` |
+| 非法类型、缺失 key path | `400` |
 
 ### `DELETE /api/configs/{name}`
 
@@ -244,9 +276,14 @@ SSH `password` 为**只写**：任何端点都不会返回它。更新既有 pas
 
 ```
 POST /api/sessions          → starting → running
+POST /api/sessions（空密码 SSH） → awaiting_password
+  ├─ 提交密码且拨号成功        → running
+  ├─ 提交密码但拨号/认证失败    → exited（exit code 1）
+  ├─ 300 秒内未提交            → terminated（输出含超时说明）
+  └─ POST .../terminate        → terminated
 进程自然退出               → exited
 POST .../terminate          → terminated
 DELETE /api/sessions/{id}   → 从列表移除（须已结束）
 ```
 
-自然退出的会话保留在列表中，直到被删除。daemon 重启后，之前运行中的会话恢复为 `exited` 历史记录；消息仍可从数据目录读取。
+自然退出的会话保留在列表中，直到被删除。daemon 重启后，之前运行中（以及 `awaiting_password`）的会话恢复为 `exited` 历史记录；消息仍可从数据目录读取。恢复的会话不会再保留密码提示。

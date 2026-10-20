@@ -284,3 +284,66 @@ func TestStartUnknownConfig(t *testing.T) {
 		t.Fatalf("start missing config exit = %d, want 2", code)
 	}
 }
+
+// TestStartAwaitingPasswordOpensBrowser covers the deferred-dial UX: a session
+// that needs a password is reported, the browser opens the Web terminal, and
+// --json neither opens a browser nor adds human text.
+func TestStartAwaitingPasswordOpensBrowser(t *testing.T) {
+	const webURL = "http://127.0.0.1:18766/web/pw123pw123"
+	c, _ := startCapture(t, api.Session{
+		ID:        "pw123pw123",
+		Name:      "box",
+		Mode:      api.ModePTY,
+		Status:    api.StatusAwaitingPassword,
+		WebURL:    webURL,
+		CreatedAt: time.Now().UTC(),
+		PendingPrompt: &api.Prompt{
+			Kind:  api.PromptKindSSHPassword,
+			Label: "Password for tester@example.com:22",
+		},
+	})
+	dir := t.TempDir()
+	store := configstore.NewStore(dir)
+	// No password stored: the config is in "ask every time" mode.
+	if err := store.SaveSSH("box", &sshconfig.Profile{Host: "example.com", User: "tester"}); err != nil {
+		t.Fatal(err)
+	}
+
+	oldOpen := openBrowser
+	var opened []string
+	openBrowser = func(url string) error {
+		opened = append(opened, url)
+		return nil
+	}
+	t.Cleanup(func() { openBrowser = oldOpen })
+
+	out := captureStdout(t, func() {
+		if code := cmdStart(c, false, dir, []string{"--name", "box"}); code != 0 {
+			t.Fatalf("cmdStart exit = %d", code)
+		}
+	})
+	if len(opened) != 1 || opened[0] != webURL {
+		t.Fatalf("opened browsers = %v, want [%s]", opened, webURL)
+	}
+	if !strings.Contains(out, "password required: enter it in the browser page") {
+		t.Fatalf("output missing the password hint: %q", out)
+	}
+	if !strings.Contains(out, "web terminal: "+webURL) {
+		t.Fatalf("output missing the web URL: %q", out)
+	}
+
+	jsonOut := captureStdout(t, func() {
+		if code := cmdStart(c, true, dir, []string{"--name", "box"}); code != 0 {
+			t.Fatalf("cmdStart --json exit = %d", code)
+		}
+	})
+	if len(opened) != 1 {
+		t.Fatalf("--json opened the browser: %v", opened)
+	}
+	if !strings.Contains(jsonOut, `"status":"awaiting_password"`) {
+		t.Fatalf("JSON output missing the status: %q", jsonOut)
+	}
+	if !strings.Contains(jsonOut, `"pending_prompt":{"kind":"ssh_password"`) {
+		t.Fatalf("JSON output missing pending_prompt: %q", jsonOut)
+	}
+}

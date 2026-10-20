@@ -17,8 +17,17 @@
     <div class="modal-box" role="alertdialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-message">
       <h1 id="modal-title" class="modal-title"></h1>
       <p id="modal-message" class="modal-message"></p>
+      <form id="password-form" class="password-form" hidden>
+        <label class="password-label" for="password-input">Password</label>
+        <input id="password-input" class="password-input" type="password" autocomplete="off"
+               autocapitalize="off" spellcheck="false" aria-describedby="password-error">
+        <p id="password-error" class="password-error" role="alert" hidden></p>
+        <p class="password-note">Sent straight to the session. It is never stored or logged.</p>
+      </form>
       <div class="modal-actions">
+        <button id="modal-cancel" class="modal-button modal-button-quiet" type="button" hidden>Cancel</button>
         <button id="modal-confirm" class="modal-button" type="button">OK</button>
+        <button id="modal-send" class="modal-button" type="submit" form="password-form" hidden>Send</button>
       </div>
     </div>
   </div>

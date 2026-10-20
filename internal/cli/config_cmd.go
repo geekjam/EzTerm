@@ -80,7 +80,7 @@ func configSSH(jsonOut bool, store *configstore.Store, args []string) int {
 	port := fs.Int("port", sshconfig.DefaultPort, "SSH port")
 	user := fs.String("user", "", "login user")
 	auth := fs.String("auth", "", "auth method: password or key")
-	password := fs.String("password", "", "password (auth=password)")
+	password := fs.String("password", "", "password (auth=password); omit to ask in the Web terminal on every start")
 	keyPath := fs.String("key-path", "", "private key path (auth=key)")
 	shell := fs.String("shell", "", "optional default remote shell")
 	positionals := parseCommandArgs(fs, args)
@@ -106,10 +106,8 @@ func configSSH(jsonOut bool, store *configstore.Store, args []string) int {
 	method := sshconfig.AuthMethod(strings.TrimSpace(*auth))
 	switch method {
 	case sshconfig.AuthPassword:
-		if strings.TrimSpace(*password) == "" {
-			printError(jsonOut, "--password is required when --auth password")
-			return 2
-		}
+		// An omitted --password stores no secret: the Web terminal asks for
+		// it on every start. Passing --password stores it as before.
 	case sshconfig.AuthKey:
 		if strings.TrimSpace(*keyPath) == "" {
 			printError(jsonOut, "--key-path is required when --auth key")
