@@ -153,6 +153,105 @@ CLI 的 `--press-key` 字节（键名、控制字节、CSI 序列）通过 `text
 
 删除已结束的会话。返回 `204`；仍在运行或处于 `awaiting_password` 返回 `409`（请先 terminate）。
 
+### `GET /api/sessions/{id}/files`
+
+列出会话所在主机的目录：本地会话是 daemon 所在机器，SSH 会话是远端主机。文件传输仅在会话处于 `running` 时可用，本地与 SSH 会话都支持。
+
+查询参数：`path`（可选）。省略或为空时列出会话根目录（本地用户 home，或 SSH 登录目录）。`~` 与 `~/...` 同样解析到该根目录，相对路径会拼接到根目录；绝对路径原样使用。`~user` 返回 `400`。
+
+```json
+{
+  "path": "/home/deploy",
+  "parent": "/home",
+  "root": "/home/deploy",
+  "entries": [
+    {"name": "logs", "path": "/home/deploy/logs", "dir": true, "symlink": false,
+     "size": 4096, "mode": "0755", "modified": "2026-08-02T10:00:00Z"},
+    {"name": "latest", "path": "/home/deploy/latest", "dir": false, "symlink": true,
+     "size": 11, "mode": "0777", "modified": "2026-08-02T10:00:00Z"}
+  ]
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `path` | 本次列出的路径（已展开 `~`，未解析符号链接） |
+| `parent` | 父目录；文件系统根为空 |
+| `root` | 会话传输根目录（本地 home / SSH 登录目录） |
+| `entries` | 目录优先，其次符号链接，最后普通文件；组内按名称排序 |
+
+`path` 指向普通文件或符号链接时只返回一个条目。默认包含隐藏文件。本地会话会隐藏并拒绝访问 daemon 数据目录，且跟随符号链接（报告目标类型与大小）；SSH 会话的符号链接标记为 `symlink: true`、`dir: false`，永不跟随。
+
+### `POST /api/sessions/{id}/files`
+
+新建单层目录（父目录必须存在）。成功返回 `201` 与新条目；目标已存在返回 `409`，父目录不存在返回 `404`。
+
+```json
+{"path": "logs/2026"}
+```
+
+### `DELETE /api/sessions/{id}/files`
+
+删除文件、符号链接（只删链接本身）或**空**目录。成功返回 `204` 无 body。非空目录 `409`；文件系统根或会话根 `400`；daemon 数据目录 `403`。
+
+### `GET /api/sessions/{id}/files/content`
+
+下载文件。响应体是原始字节（非 JSON），边读边发，内存占用与文件大小无关；没有大小上限，也不支持断点续传。`HEAD` 返回同样的头而不发送 body。
+
+```
+Content-Type: application/octet-stream
+Content-Length: <size>
+Content-Disposition: attachment; filename="app.log"
+X-Content-Type-Options: nosniff
+Cache-Control: no-store
+```
+
+下载一律作为附件，绝不内联渲染，避免上传的 HTML 在 daemon 同源执行。目录、SSH 符号链接、特殊文件（FIFO、设备、socket）返回 `400`。
+
+### `POST /api/sessions/{id}/files/content`
+
+上传文件。请求体就是文件原始内容，流式写入目标；1 MiB 的 JSON body 上限不适用于该端点。
+
+| 查询参数 | 默认 | 说明 |
+|---|---|---|
+| `path` | 必填 | 目标文件路径 |
+| `overwrite` | `true` | 设为 `false` 时目标已存在返回 `409` |
+
+```
+Content-Type: application/octet-stream
+```
+
+其他 Content-Type 返回 `415`。该要求与下方的 Origin 校验共同阻止跨站表单写入文件。
+
+上传先写目标目录中的临时文件，再用原子重命名发布，因此失败或中断不会留下半截目标文件；覆盖时保留原文件权限位。本地会话跟随符号链接（替换目标），SSH 会话拒绝链接。成功返回 `200` 与结果条目：
+
+```json
+{"file": {"name": "app.log", "path": "/home/deploy/app.log", "dir": false,
+          "symlink": false, "size": 1234, "mode": "0644",
+          "modified": "2026-08-02T10:03:00Z"}}
+```
+
+若传输中途 daemon 被杀死，可能残留 `.ezterm-upload-*.part`；可用 `DELETE .../files?path=...` 清理。
+
+#### 文件传输的访问边界与状态码
+
+文件端点只接受 loopback 来源；浏览器请求若带 `Origin` 头，必须与请求 Host 一致（跨站页面得到 `403`）。校验在查找会话之前执行，因此非本机调用方无法探测会话是否存在。
+
+| 条件 | 响应 |
+|---|---|
+| 非 loopback 来源，或跨站 `Origin` | `403` |
+| 会话不存在 | `404` |
+| 会话不是 `running`（含 `awaiting_password`） | `409` |
+| 路径不存在（含悬空符号链接） | `404` |
+| 权限不足，或本地路径落在 daemon 数据目录内 | `403` |
+| 上传 body 不是 `application/octet-stream` | `415` |
+| 非法路径、`~user`、下载目录、SSH 符号链接、特殊文件、删除根目录 | `400` |
+| 上传目标是目录、`overwrite=false` 且目标已存在、删除非空目录、mkdir 目标已存在 | `409` |
+| SSH/SFTP 传输失败（连接关闭、无 sftp 子系统） | `502` |
+| 本地未知 I/O 失败 | `500` |
+
+SSH 会话的文件传输复用该会话自己的 SSH 连接，因此会话结束即不可用，也不需要额外凭据。远端必须启用 `sftp` 子系统（OpenSSH 默认启用）。
+
 ### `POST /api/sessions/{id}/resize`
 
 调整 PTY 尺寸。

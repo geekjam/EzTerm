@@ -131,6 +131,16 @@ docs: add HTTP API reference
   or environment variables. Terminal prompt detection lives in
   `internal/prompt` and must stay a pure, testable package (rule table + tail
   detector, no I/O).
+- **File transfer:** the five file endpoints are documented in `API.md` and
+  implemented once in `internal/files` (a `Backend` interface with a local
+  `os` implementation and an SFTP implementation on the session's SSH
+  connection). They are available only for `running` sessions and only from a
+  loopback peer; a browser `Origin` must match the request host. Uploads accept
+  `application/octet-stream` only, write a temporary file in the target
+  directory, and publish it with an atomic rename. The local backend follows
+  symlinks; the SSH backend never does. The daemon data directory is denied
+  with `403` and hidden from listings. Never write file contents or transfer
+  paths to `messages`, `slog`, or `sessions.json`.
 - **Web UI copy is English**, matching the CLI output and the API docs; the
   embedded pages have no build step, so keep them dependency-light.
 - **Security:** never commit credentials, keys, or private material. SSH
@@ -139,10 +149,17 @@ docs: add HTTP API reference
   with no stored password (the Web terminal asks on every start) when writing
   docs or examples.
 
+---
+
 ## 6. Dependencies
 
-- WebSocket support uses `github.com/coder/websocket` (context-cancellable, no
-  transitive dependencies).
-- The Web terminal page is served from `go:embed`-ed assets under
-  `internal/daemon/web/`; there is no front-end build step. xterm.js is loaded
-  from a CDN at runtime and is not vendored.
+- WebSocket support uses `github.com/coder/websocket` (context cancellation
+  aware, no transitive dependencies).
+- SSH file transfer uses `github.com/pkg/sftp`; the SFTP client is opened on
+  the session's existing `*ssh.Client`, and the package is confined to
+  `internal/files`. The remote host must provide the `sftp` subsystem.
+- `golang.org/x/crypto` provides SSH, `golang.org/x/term` the terminal state,
+  `golang.org/x/sys` platform calls, and `creack/pty` / `charmbracelet/x/conpty`
+  the PTY implementations.
+- Web pages are `go:embed` assets under `internal/daemon/web/` with no frontend
+  build step; xterm.js is loaded from a CDN at runtime and is not vendored.

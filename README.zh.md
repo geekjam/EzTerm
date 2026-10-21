@@ -62,6 +62,7 @@ go build -o ezterm .
 - **精确按键输入** — `send --press-key` 发送单个标准终端按键或组合键（如 `ctrl+c`、`enter`、`ctrl+shift+up`、`f5`），不追加换行；PTY 与 pipe 会话均可使用。
 - **本机 Web 终端** — 每个用 `start` 启动的 PTY 会话默认提供 xterm.js 浏览器画面，通过 WebSocket 实时传输输出、输入、粘贴和尺寸；`--noweb` 可关闭该页面。断开时页面用内嵌弹窗提示，并区分「会话结束」与「连接断开」（后者自动重连）。daemon 默认只监听本机。
 - **浏览器内密码提示** — SSH 配置未存密码，或会话输出出现密码提示（`sudo`、`su`、`passwd`、嵌套 `ssh`）时，页面弹出密码输入框。密码由用户亲手输入，只经 WebSocket 直达 daemon：不写入配置、input 消息、日志或 HTTP 响应，且仅接受 loopback 来源。`ezterm start` 遇到这种情况会自动打开该页面。
+- **文件上传下载（本地 + SSH）** — 在运行中的会话主机上浏览目录、上传、下载、新建目录与删除文件。Web 终端提供 `Files` 对话框，支持拖拽上传、进度与取消；`ezterm files …` 与 HTTP 端点供脚本使用。相对路径从会话根目录开始（本地为用户 home，SSH 为登录目录）。本地会话读写 daemon 所在机器；SSH 会话复用会话自身的 SSH 连接（SFTP），因此「每次询问密码」的会话无需额外凭据。远端需启用 `sftp` 子系统。文件端点仅限 loopback，并拒绝 daemon 数据目录（`~/.ezterm`）。
 - **本机配置网页** — `ezterm config web [--open]`（或 `http://127.0.0.1:18766/config`）在浏览器中打开深色主题页面，用于创建、编辑、删除已保存的本地/SSH 配置，配色与 Web 终端一致。SSH 密码为只写：页面永不回显已存密码；勾选「每次询问」则完全不存密码。
 
 ## 命令行
@@ -79,6 +80,7 @@ ezterm [全局参数] <命令> [参数]
 | `terminate <id>` | 停止会话（先优雅后强制） |
 | `delete <id>` | 删除已结束的会话 |
 | `list` | 列出会话 |
+| `files ls\|upload\|download\|rm\|mkdir` | 在运行中的会话主机上传输文件（`ls <id> [path]`、`upload <id> <源\|-> [path]`、`download <id> <path> [目标\|->]`、`rm <id> <path>`、`mkdir <id> <path>`）；本地会话用系统原生路径，SSH 会话用 POSIX 路径 |
 | `config local\|ssh` | 创建 / 更新启动配置：`--name` 及类型专属参数 |
 | `config list` | 列出配置（可选 `--type local\|ssh`） |
 | `config delete` | 按 `--name` 删除配置 |
@@ -93,7 +95,7 @@ ezterm [全局参数] <命令> [参数]
 
 完整示例、启动配置、配置网页与 Skill 工作流见 [`SKILL.md`](./SKILL.md)。
 
-配置页面及对应 API 与 daemon 绑定地址一致。默认为仅本机（`127.0.0.1`）；若用 `--host` 暴露 daemon，也会暴露配置 CRUD，请仅在可信网络使用。
+配置页面及对应 API 与 daemon 绑定地址一致。默认为仅本机（`127.0.0.1`）；若用 `--host` 暴露 daemon，也会暴露配置 CRUD 与会话控制，请仅在可信网络使用。文件端点额外要求 loopback 来源与同源 `Origin`，且永不暴露 daemon 数据目录。
 
 ### 示例
 
@@ -120,6 +122,13 @@ ezterm start --name prod
 # 需要密码的 SSH：省略 --password，改在浏览器页面输入（不落盘，start 会自动开页）。
 ezterm config ssh --name box --host 10.0.0.5 --user root --auth password
 ezterm start --name box
+
+# 在运行中的会话主机上传输文件（本地或 SSH）。
+ezterm files ls <id>
+ezterm files mkdir <id> ~/releases
+ezterm files upload <id> ./app.tar.gz ~/releases/
+ezterm files download <id> ~/releases/app.tar.gz ./app.tar.gz
+ezterm files rm <id> ~/releases/app.tar.gz
 
 # 管理配置。
 ezterm config list
@@ -152,7 +161,7 @@ cp -r ./EzTerm ~/.pi/agent/skills/EzTerm
 
 ## HTTP API
 
-daemon 提供小型 JSON API（`/health`、`/api/sessions`、`/api/sessions/{id}/output`、`/api/configs` 等），以及 Web 终端页面和 WebSocket：`/web/{id}`、`/web/{id}/ws`（PTY 会话默认开启），另有配置管理页面 `/config`。详见 [`API.md`](./API.md)（中文版 [`API.zh.md`](./API.zh.md)）。
+daemon 提供小型 JSON API（`/health`、`/api/sessions`、`/api/sessions/{id}/output`、`/api/sessions/{id}/files`、`/api/configs` 等），以及 Web 终端页面和 WebSocket：`/web/{id}`、`/web/{id}/ws`（PTY 会话默认开启），另有配置管理页面 `/config`。文件端点仅限 loopback 并以原始字节流收发。详见 [`API.md`](./API.md)（中文版 [`API.zh.md`](./API.zh.md)）。
 
 ## 项目结构与规范
 

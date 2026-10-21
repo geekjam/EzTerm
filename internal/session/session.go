@@ -17,6 +17,7 @@ import (
 	"ezterm/internal/api"
 	"ezterm/internal/buffer"
 	"ezterm/internal/configstore"
+	"ezterm/internal/files"
 	"ezterm/internal/message"
 	"ezterm/internal/prompt"
 	"ezterm/internal/sshclient"
@@ -39,6 +40,10 @@ const (
 // the Web terminal page instead.
 var ErrPasswordRequired = errors.New("session: ssh password required")
 
+// ErrFilesNotRunning reports that file transfer was requested for a session
+// that is not currently running. Local and SSH sessions share this rule.
+var ErrFilesNotRunning = errors.New("session: file transfer requires a running session")
+
 // Config describes how to create a new session.
 type Config struct {
 	Command     string
@@ -54,6 +59,13 @@ type Config struct {
 	// PasswordTimeout bounds the wait for a password submitted from the Web
 	// terminal page. Zero means defaultPasswordTimeout.
 	PasswordTimeout time.Duration
+	// FileRoot overrides the local file-transfer root. Empty means the current
+	// user's home directory; tests set it to keep transfers inside a temp dir.
+	// It is never read from the wire or persisted.
+	FileRoot string
+	// FileDenyRoots lists directories the local file backend must not expose.
+	// The manager adds the daemon data directory on every create.
+	FileDenyRoots []string
 }
 
 // proc abstracts a running process, local or remote.
@@ -749,6 +761,29 @@ func passwordTimeoutNote(timeout time.Duration) string {
 		return fmt.Sprintf("password prompt timed out after %ds", seconds)
 	}
 	return fmt.Sprintf("password prompt timed out after %s", timeout)
+}
+
+// Files returns the session's file transfer backend. Only running sessions can
+// transfer files: the SSH backend depends on a live connection, and keeping one
+// rule for both kinds keeps the API predictable.
+func (s *Session) Files() (files.Backend, error) {
+	s.mu.RLock()
+	status := s.Status
+	p := s.proc
+	s.mu.RUnlock()
+	if status != api.StatusRunning || p == nil {
+		return nil, ErrFilesNotRunning
+	}
+	if isRemote(s.SSHConfig) {
+		remote, ok := p.(interface {
+			SFTP() (files.Backend, error)
+		})
+		if !ok {
+			return nil, ErrFilesNotRunning
+		}
+		return remote.SFTP()
+	}
+	return files.NewLocal(s.cfg.FileRoot, s.cfg.FileDenyRoots...), nil
 }
 
 // IsWebEnabled reports whether the session was created with a Web terminal.

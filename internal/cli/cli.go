@@ -55,7 +55,7 @@ func Run(args []string) int {
 		return cmdConfig(*jsonOut, expandedDataDir, *port, *logLevel, cmdArgs)
 	case "health":
 		return cmdHealth(*jsonOut, *port, cmdArgs)
-	case "start", "send", "read", "attach", "terminate", "delete", "list":
+	case "start", "send", "read", "attach", "terminate", "delete", "list", "files":
 		client := newClient(*port)
 		if !client.checkHealth() {
 			if err := ensureDaemon(*port, expandedDataDir, *logLevel); err != nil {
@@ -76,6 +76,8 @@ func Run(args []string) int {
 			return cmdTerminate(client, *jsonOut, cmdArgs)
 		case "delete":
 			return cmdDelete(client, *jsonOut, cmdArgs)
+		case "files":
+			return cmdFiles(client, *jsonOut, cmdArgs)
 		default:
 			return cmdList(client, *jsonOut, cmdArgs)
 		}
@@ -162,6 +164,7 @@ Commands:
   terminate    stop a running session
   delete       remove a finished session
   list         list sessions
+  files        transfer files (ls, upload, download, rm, mkdir)
   config       manage launch configs (local, ssh, list, delete, web)
   daemon       run the daemon in the foreground
   health       probe the daemon
@@ -179,6 +182,15 @@ Config web:
 Config ssh:
   ezterm config ssh --name <n> --host <h> --user <u> --auth password [--password <p>]
   Omit --password to store nothing: the Web terminal asks for it on every start.
+
+Files:
+  ezterm files ls <id> [path]
+  ezterm files upload <id> <source|-> [path] [--no-overwrite]
+  ezterm files download <id> <path> [target|-] [--force]
+  ezterm files mkdir <id> <path>
+  ezterm files rm <id> <path>
+  Paths are OS-native for local sessions and POSIX for SSH sessions; ~ works for both.
+  A trailing separator on an upload/download target appends the source file name.
 `)
 }
 

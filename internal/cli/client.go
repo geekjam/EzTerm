@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"ezterm/internal/api"
@@ -94,6 +96,20 @@ func (c *client) do(ctx context.Context, method, path string, body, out any, tim
 		}
 	}
 	return nil
+}
+
+// classifyFileError keeps a missing path distinct from a missing session: a
+// 404 from a file endpoint can mean either, and only the latter is the CLI's
+// "session not found" exit code.
+func classifyFileError(err error) error {
+	if !errors.Is(err, errSessionNotFound) {
+		return err
+	}
+	inner := strings.TrimPrefix(err.Error(), errSessionNotFound.Error()+": ")
+	if strings.HasPrefix(inner, "session") {
+		return err
+	}
+	return errors.New(inner)
 }
 
 func classifyError(status int, message string) error {
@@ -189,9 +205,9 @@ func (c *client) attachStream(ctx context.Context, id string) (io.ReadCloser, er
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		var envelope api.ErrorResponse
 		if json.Unmarshal(raw, &envelope) == nil && envelope.Error != "" {
-			return nil, classifyError(resp.StatusCode, envelope.Error)
+			return nil, classifyFileError(classifyError(resp.StatusCode, envelope.Error))
 		}
-		return nil, classifyError(resp.StatusCode, fmt.Sprintf("HTTP %d", resp.StatusCode))
+		return nil, classifyFileError(classifyError(resp.StatusCode, fmt.Sprintf("HTTP %d", resp.StatusCode)))
 	}
 	return resp.Body, nil
 }
@@ -213,6 +229,95 @@ func (c *client) resize(id string, rows, cols int) error {
 type resizeRequest struct {
 	Rows int `json:"rows"`
 	Cols int `json:"cols"`
+}
+
+// filesList returns a directory listing, or one entry when path names a file.
+func (c *client) filesList(id, path string) (api.FileListResponse, error) {
+	var out api.FileListResponse
+	target := "/api/sessions/" + url.PathEscape(id) + "/files?path=" + url.QueryEscape(path)
+	if err := c.do(context.Background(), http.MethodGet, target, nil, &out, 60*time.Second); err != nil {
+		return api.FileListResponse{}, classifyFileError(err)
+	}
+	return out, nil
+}
+
+// filesMkdir creates one directory below the session root.
+func (c *client) filesMkdir(id, path string) (api.FileResponse, error) {
+	var out api.FileResponse
+	target := "/api/sessions/" + url.PathEscape(id) + "/files"
+	if err := c.do(context.Background(), http.MethodPost, target, api.MkdirRequest{Path: path}, &out, 30*time.Second); err != nil {
+		return api.FileResponse{}, classifyFileError(err)
+	}
+	return out, nil
+}
+
+// filesDelete removes a file, symlink, or empty directory.
+func (c *client) filesDelete(id, path string) error {
+	target := "/api/sessions/" + url.PathEscape(id) + "/files?path=" + url.QueryEscape(path)
+	return classifyFileError(c.do(context.Background(), http.MethodDelete, target, nil, nil, 30*time.Second))
+}
+
+// filesDownload opens the raw download stream. The shared client has no
+// overall timeout, so large transfers are not cut short; the caller closes the
+// body.
+func (c *client) filesDownload(ctx context.Context, id, path string) (*http.Response, error) {
+	target := c.baseURL + "/api/sessions/" + url.PathEscape(id) + "/files/content?path=" + url.QueryEscape(path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request download: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		var envelope api.ErrorResponse
+		if json.Unmarshal(raw, &envelope) == nil && envelope.Error != "" {
+			return nil, classifyFileError(classifyError(resp.StatusCode, envelope.Error))
+		}
+		return nil, classifyFileError(classifyError(resp.StatusCode, fmt.Sprintf("HTTP %d", resp.StatusCode)))
+	}
+	return resp, nil
+}
+
+// filesUpload streams body to the session's target path. A negative size means
+// the length is unknown and the request uses chunked encoding.
+func (c *client) filesUpload(ctx context.Context, id, path string, body io.Reader, size int64, overwrite bool) (api.FileResponse, error) {
+	target := c.baseURL + "/api/sessions/" + url.PathEscape(id) + "/files/content?path=" +
+		url.QueryEscape(path) + "&overwrite=" + strconv.FormatBool(overwrite)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, body)
+	if err != nil {
+		return api.FileResponse{}, err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	if size >= 0 {
+		req.ContentLength = size
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return api.FileResponse{}, fmt.Errorf("request upload: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if readErr != nil {
+		return api.FileResponse{}, fmt.Errorf("read response: %w", readErr)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var envelope api.ErrorResponse
+		if json.Unmarshal(raw, &envelope) == nil && envelope.Error != "" {
+			return api.FileResponse{}, classifyFileError(classifyError(resp.StatusCode, envelope.Error))
+		}
+		return api.FileResponse{}, classifyFileError(classifyError(resp.StatusCode, fmt.Sprintf("HTTP %d", resp.StatusCode)))
+	}
+	var out api.FileResponse
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return api.FileResponse{}, fmt.Errorf("decode response: %w", err)
+		}
+	}
+	return out, nil
 }
 
 // parseIDArg extracts a session ID from the first positional argument.

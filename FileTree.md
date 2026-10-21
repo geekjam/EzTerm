@@ -25,7 +25,8 @@ of key files and directories.
 ├── internal/                     # Private implementation packages
 ├── scripts/
 │   ├── e2e.sh                    # End-to-end acceptance (Bash / Unix + Git Bash)
-│   └── e2e.ps1                   # End-to-end acceptance (PowerShell / Windows)
+│   ├── e2e.ps1                   # End-to-end acceptance (PowerShell / Windows)
+│   └── web_smoke.js              # Headless-browser smoke test for the Files panel (CDP)
 └── testdata/                     # Test fixtures
 ```
 
@@ -55,6 +56,7 @@ internal/
 │   ├── env.go                    # ~/.ezterm resolution and ~ expansion
 │   ├── config_cmd.go             # config local/ssh/list/delete local management
 │   ├── config_web.go             # config web: ensure daemon and print/open config page
+│   ├── files_cmd.go              # files ls/upload/download/rm/mkdir + TTY progress
 │   ├── open_linux.go             # Linux default-browser launcher
 │   ├── open_unix.go              # macOS/BSD default-browser launcher
 │   └── open_windows.go           # Windows default-browser launcher
@@ -65,8 +67,15 @@ internal/
 ├── daemon/
 │   ├── daemon.go                 # HTTP server, flags, graceful shutdown
 │   ├── handlers.go               # REST/JSON handlers, config CRUD, attach stream
+│   ├── files.go                  # File transfer handlers: list/upload/download/mkdir/delete, loopback+Origin gate
 │   ├── web.go                    # Embedded Web terminal/config pages + WebSocket bridge
 │   └── web/                      # xterm.js terminal + disconnect dialog + dark config page assets (go:embed)
+├── files/
+│   ├── backend.go                # Backend interface shared by both file transfer backends
+│   ├── path.go                   # ~ expansion + POSIX/native path resolution
+│   ├── local.go                  # os backend: home root, symlink following, data-dir deny, atomic upload
+│   ├── sftp.go                   # SFTP backend on a session's SSH connection (symlinks not followed)
+│   └── errors.go                 # Sentinel errors + os/SFTP status mapping
 ├── message/
 │   └── message.go                # Per-session message index + content files
 ├── prompt/
@@ -88,8 +97,9 @@ internal/
 ```
 
 Dependency direction (no cycles): `cli` → `daemon`/`configstore`/`sshconfig`;
-`daemon` → `session`/`configstore`/`message`/`storage`;
-`session` → `buffer`/`ansi`/`message`/`storage`/`sshclient`/`configstore`/`prompt`.
+`daemon` → `session`/`files`/`configstore`/`message`/`storage`;
+`session` → `buffer`/`ansi`/`files`/`message`/`storage`/`sshclient`/`configstore`/`prompt`;
+`sshclient` → `files`.
 
 Attach flow: the CLI `attach` command opens `GET /api/sessions/{id}/attach`
 (daemon streams the raw PTY byte stream, replaying the retained screen first),
@@ -107,6 +117,18 @@ When the process exits, the daemon sends a `{"type":"session-end"}` text frame
 before the normal closure, which the page uses to show a "Session disconnected"
 dialog; a broken transport produces a "Connection lost" dialog and a background
 reconnect instead.
+
+File transfer lives in `internal/files`, which defines one `Backend` interface
+with two implementations: `Local` (plain `os` calls on the daemon machine, root
+= the user's home, symlinks followed, daemon data directory denied) and `SFTP`
+(an `sftp` subsystem channel opened lazily on the session's existing
+`*ssh.Client`, symlinks never followed). `Session.Files()` enforces the single
+rule that both need — the session must be `running` — and the daemon gates every
+file endpoint on a loopback peer plus a same-origin `Origin`. Uploads write a
+`.ezterm-upload-*.part` temp file in the target directory and publish it with an
+atomic rename, preserving the previous file's mode. Downloads stream as
+`application/octet-stream` attachments. Nothing about a transfer is written to
+the message log.
 
 Password prompts are handled by the same WebSocket. An SSH config that uses
 password authentication with no stored password is created in

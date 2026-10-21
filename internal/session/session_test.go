@@ -652,3 +652,43 @@ func TestSubmitTerminalSecretNotLogged(t *testing.T) {
 		t.Fatal("expected a second submission to fail: no prompt is pending")
 	}
 }
+
+// --- file transfer availability ---
+
+func TestFilesAvailabilityMatrix(t *testing.T) {
+	// Running local session: a backend rooted at Config.FileRoot.
+	root := t.TempDir()
+	s := newSession(t, Config{
+		Command:  os.Args[0],
+		Args:     helperArgs("interactive"),
+		Mode:     api.ModePipe,
+		FileRoot: root,
+	})
+	backend, err := s.Files()
+	if err != nil {
+		t.Fatalf("Files for a running local session: %v", err)
+	}
+	if got, err := backend.Root(); err != nil || got != root {
+		t.Fatalf("root = %q err=%v, want %q", got, err, root)
+	}
+
+	// A finished session refuses transfer.
+	s.Terminate(time.Second, true)
+	if _, err := s.Files(); !errors.Is(err, ErrFilesNotRunning) {
+		t.Fatalf("Files after terminate = %v, want ErrFilesNotRunning", err)
+	}
+
+	// An SSH session that is still waiting for a password has no connection.
+	awaiting := newPromptSession(t, 30*time.Second)
+	if _, err := awaiting.Files(); !errors.Is(err, ErrFilesNotRunning) {
+		t.Fatalf("Files while awaiting_password = %v, want ErrFilesNotRunning", err)
+	}
+	awaiting.Terminate(time.Second, true)
+
+	// A session that never started has no process either.
+	idle := newSession(t, Config{Command: os.Args[0], Args: helperArgs("interactive"), Mode: api.ModePipe})
+	idle.Terminate(time.Second, true)
+	if _, err := idle.Files(); !errors.Is(err, ErrFilesNotRunning) {
+		t.Fatalf("Files on a terminated session = %v, want ErrFilesNotRunning", err)
+	}
+}

@@ -65,3 +65,14 @@ func TestRemoteSessionInterfaceIsNotNil(t *testing.T) {
 		t.Fatal("sanity check unexpectedly matched")
 	}
 }
+
+// TestRemoteSessionSFTPAfterEnd verifies that a finished SSH session refuses
+// file transfer instead of opening a channel on a dead connection.
+func TestRemoteSessionSFTPAfterEnd(t *testing.T) {
+	done := make(chan struct{})
+	close(done)
+	rs := &remoteSession{done: done}
+	if _, err := rs.SFTP(); err == nil {
+		t.Fatal("expected an error for an ended session")
+	}
+}

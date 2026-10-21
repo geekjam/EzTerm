@@ -186,6 +186,133 @@ immediately (the output records that no password was supplied).
 Remove a finished session. Returns `204`; `409` if the session is still
 running or `awaiting_password` (terminate it first).
 
+### `GET /api/sessions/{id}/files`
+
+List a directory on the session's host — the daemon machine for a local
+session, the remote host for an SSH session. File transfer is available only
+while the session is `running`; both local and SSH sessions are supported.
+
+Query parameters: `path` (optional). An empty or omitted `path` lists the
+session root (the local user's home directory, or the SSH login directory).
+`~` and `~/...` also resolve to that root, and a relative path is joined to it;
+absolute paths are accepted as-is. `~user` is rejected with `400`.
+
+```json
+{
+  "path": "/home/deploy",
+  "parent": "/home",
+  "root": "/home/deploy",
+  "entries": [
+    {"name": "logs", "path": "/home/deploy/logs", "dir": true, "symlink": false,
+     "size": 4096, "mode": "0755", "modified": "2026-08-02T10:00:00Z"},
+    {"name": "latest", "path": "/home/deploy/latest", "dir": false, "symlink": true,
+     "size": 11, "mode": "0777", "modified": "2026-08-02T10:00:00Z"}
+  ]
+}
+```
+
+| Field | Notes |
+|---|---|
+| `path` | the listed path, expanded but not symlink-resolved |
+| `parent` | parent directory; empty at a filesystem root |
+| `root` | session transfer root (local home / SSH login directory) |
+| `entries` | directories first, then symlinks, then files; each group sorted by name |
+
+`path` naming a regular file or symlink returns a single entry. Hidden files
+are included. For a local session the daemon data directory is hidden and
+cannot be reached; symlinks are followed (their target's type and size are
+reported). For an SSH session symlinks are reported with `symlink: true` and
+`dir: false` and are never followed.
+
+### `POST /api/sessions/{id}/files`
+
+Create one directory (the parent must exist). Returns `201` with the new
+entry; `409` if the path already exists, `404` if the parent is missing.
+
+```json
+{"path": "logs/2026"}
+```
+
+### `DELETE /api/sessions/{id}/files`
+
+Delete a file, a symlink (the link itself), or an **empty** directory. Returns
+`204` with no body. `409` for a non-empty directory, `400` for a filesystem
+root or the session root, `403` for the daemon data directory.
+
+### `GET /api/sessions/{id}/files/content`
+
+Download a file. The body is the raw bytes (not JSON), streamed as they arrive,
+so memory use does not grow with the file size; there is no size limit and no
+resume support. `HEAD` returns the same headers without a body.
+
+```
+Content-Type: application/octet-stream
+Content-Length: <size>
+Content-Disposition: attachment; filename="app.log"
+X-Content-Type-Options: nosniff
+Cache-Control: no-store
+```
+
+Downloads are always attachments, never rendered inline, so an uploaded HTML
+file cannot execute on the daemon origin. `400` for a directory, a symlink on
+an SSH session, or a special file (FIFO, device, socket).
+
+### `POST /api/sessions/{id}/files/content`
+
+Upload a file. The request body is the raw file content and is streamed to the
+target; the 1 MiB JSON body cap does not apply.
+
+| Query | Default | Notes |
+|---|---|---|
+| `path` | required | target file path |
+| `overwrite` | `true` | `false` returns `409` when the target exists |
+
+```
+Content-Type: application/octet-stream
+```
+
+Any other content type returns `415`. That requirement, together with the
+origin check below, keeps a cross-site form from writing files.
+
+The upload is written to a temporary file in the target directory and published
+with an atomic rename, so a failed or interrupted transfer never leaves a
+half-written target. Overwriting preserves the existing file's permission bits.
+Symlinks are followed for a local session (the target is replaced) and rejected
+for an SSH session. Returns `200` with the resulting entry:
+
+```json
+{"file": {"name": "app.log", "path": "/home/deploy/app.log", "dir": false,
+          "symlink": false, "size": 1234, "mode": "0644",
+          "modified": "2026-08-02T10:03:00Z"}}
+```
+
+A leftover `.ezterm-upload-*.part` file is possible if the daemon is killed
+mid-transfer; it can be removed with `DELETE .../files?path=...`.
+
+#### File transfer access and status codes
+
+File endpoints are only reachable from a loopback peer, and a browser request
+whose `Origin` header is present must match the request host (a cross-site page
+gets `403`). They are checked before the session lookup, so a non-local caller
+cannot probe which sessions exist.
+
+| Condition | Response |
+|---|---|
+| non-loopback peer, or cross-site `Origin` | `403` |
+| session not found | `404` |
+| session is not `running` (including `awaiting_password`) | `409` |
+| path missing (including a dangling symlink) | `404` |
+| permission denied, or local path inside the daemon data directory | `403` |
+| upload body is not `application/octet-stream` | `415` |
+| invalid path, `~user`, directory download, SSH symlink, special file, root delete | `400` |
+| upload onto a directory, existing target with `overwrite=false`, non-empty directory delete, mkdir target exists | `409` |
+| SSH/SFTP transport failure (connection closed, no sftp subsystem) | `502` |
+| unexpected local I/O failure | `500` |
+
+An SSH session's file transfer reuses the session's own SSH connection, so it
+stops as soon as the session stops and requires no separate credentials. The
+remote host must enable the `sftp` subsystem (OpenSSH does by default).
+
 ### `POST /api/sessions/{id}/resize`
 
 Resize the PTY.

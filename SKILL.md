@@ -3,7 +3,7 @@ name: ezterm
 description: >-
   Use when you need to connect to a specified server or terminal — start,
   drive, and read interactive sessions (REPLs, installers, servers, remote
-  SSH shells) through the ezterm HTTP API on 127.0.0.1:18766. 
+  SSH shells) and file transfer through the ezterm HTTP API on 127.0.0.1:18766. 
 ---
 
 # EzTerm — interactive terminal sessions over HTTP
@@ -18,7 +18,6 @@ terminal, but driven entirely over HTTP. Every response is JSON.
 go build .        # from the EzTerm source root -> ./ezterm (ezterm.exe on Windows)
 ```
 
-The same binary serves the HTTP API, the Web terminal, and the config page.
 **Prefer an existing compiled binary**: look in the `skills` directory (the
 binary is normally placed next to `SKILL.md`) before compiling.
 
@@ -40,10 +39,18 @@ curl -s http://127.0.0.1:18766/health          # -> {"status":"ok"}
 Start-Process -WindowStyle Hidden ezterm.exe -ArgumentList 'daemon'
 ```
 
-Default bind `127.0.0.1:18766`, data dir `~/.ezterm`; both are fixed at daemon
-start (`daemon --port <n> --data-dir <dir>`) and cannot be changed over HTTP.
+Default bind `127.0.0.1:18766`.
 Request bodies are JSON (`Content-Type: application/json`, max 1 MiB). Errors
 are `{"error":"..."}` with the matching status code.
+
+## Configure terminal
+
+# Use the following command to open the webpage for terminal configuration.
+```bash
+ezterm config web --open      # ensures the daemon runs, opens http://127.0.0.1:18766/config
+```
+
+(or open `http://127.0.0.1:18766/config` in a browser.)
 
 ## Endpoints
 
@@ -106,6 +113,17 @@ GET /api/sessions/{id}/output ?reader_id=0&timeout=30&raw=false&max_bytes=0 -> {
 POST /api/sessions/{id}/readers -> 201 {reader_id}
 ```
 
+### files
+
+```yaml
+# running sessions only
+GET  /api/sessions/{id}/files ?path=           -> {path,parent,root,entries:[{name,path,dir,symlink,size,mode,modified}]}
+POST /api/sessions/{id}/files {path}           -> 201 {file}       # mkdir; parent must exist
+DELETE /api/sessions/{id}/files ?path=         -> 204             # file, link, or EMPTY dir only
+GET  /api/sessions/{id}/files/content ?path=   -> raw bytes       # attachment, not JSON
+POST /api/sessions/{id}/files/content ?path=&overwrite=true  body=raw octet-stream -> {file}
+```
+
 ### resize
 
 ```yaml
@@ -136,16 +154,6 @@ GET /api/configs -> {configs:[...]}
 ```yaml
 GET /api/configs/{name} -> ConfigDetail    # stored password is never returned
 # has_password = a secret is stored ; password_prompt = ask in the Web terminal each start
-```
-
-### upsert config
-
-```yaml
-# local: {type:"local",command,args?,mode?} | ssh: {type:"ssh",host,port?,user,auth_method,password|key_path,shell?,password_prompt?}
-# 400 = invalid or missing key_path ; 409 = name owned by the other type
-# never send a password unless the user supplied it — let them type it on the /config page
-# auth_method:"password" with no password = ask in the Web terminal on every start (nothing stored)
-POST /api/configs/{name} {type:"local"|"ssh",...} -> ConfigDetail
 ```
 
 ### delete config

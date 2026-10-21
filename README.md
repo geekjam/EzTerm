@@ -94,6 +94,14 @@ go build -o ezterm .
   there; it travels only through the WebSocket to the daemon, is never stored
   in configs, input messages, logs, or responses, and is only accepted from a
   loopback peer. `ezterm start` opens the page automatically in that case.
+- **File transfer (local + SSH)** — browse, upload, download, create directories,
+  and delete files on a running session's host. The Web terminal has a `Files`
+  dialog with drag-and-drop upload, progress, and cancel; `ezterm files …` and
+  the HTTP endpoints do the same from scripts. Relative paths start at the session
+  root (your home directory locally, the login directory over SSH). Local
+  sessions read the daemon machine; SSH sessions reuse the session's own SSH
+  connection (SFTP), so password-prompt sessions need no extra secret. The remote must enable the `sftp` subsystem. File endpoints are
+  loopback-only and refuse the daemon data directory (`~/.ezterm`).
 - **Web config page** — `ezterm config web [--open]` (or `http://127.0.0.1:18766/config`)
   opens a dark-themed page to create, edit, and delete saved local/SSH configs
   in the browser, matching the Web terminal's look. SSH passwords are
@@ -115,6 +123,7 @@ ezterm [global flags] <command> [flags]
 | `terminate <id>` | Stop a session (graceful, then force) |
 | `delete <id>` | Remove a finished session |
 | `list` | List sessions |
+| `files ls\|upload\|download\|rm\|mkdir` | Transfer files on a running session's host (`ls <id> [path]`, `upload <id> <source\|-> [path]`, `download <id> <path> [target\|->]`, `rm <id> <path>`, `mkdir <id> <path>`); paths are OS-native for local sessions and POSIX for SSH |
 | `config local\|ssh` | Create / update a launch config: `--name` plus type-specific flags |
 | `config list` | List configs (optionally `--type local\|ssh`) |
 | `config delete` | Delete a config by `--name` |
@@ -131,8 +140,10 @@ Global flags (valid before or after the command): `--port` (18766), `--data-dir`
 Full examples, saved configs, the web config page, and the skill workflow are in [`SKILL.md`](./SKILL.md).
 
 The config page and its API follow the daemon bind address. The default is local-only
-(`127.0.0.1`); exposing the daemon with `--host` also exposes configuration CRUD,
-so use that option only on a trusted network.
+(`127.0.0.1`); exposing the daemon with `--host` also exposes configuration CRUD
+and session control, so use that option only on a trusted network. File transfer
+endpoints additionally require a loopback peer and a same-origin `Origin`, and
+they never expose the daemon data directory.
 
 ### Examples
 
@@ -161,6 +172,13 @@ ezterm start --name prod
 # Nothing is stored; ezterm start opens the page automatically.
 ezterm config ssh --name box --host 10.0.0.5 --user root --auth password
 ezterm start --name box
+
+# Move files on a running session's host (local or SSH).
+ezterm files ls <id>
+ezterm files mkdir <id> ~/releases
+ezterm files upload <id> ./app.tar.gz ~/releases/
+ezterm files download <id> ~/releases/app.tar.gz ./app.tar.gz
+ezterm files rm <id> ~/releases/app.tar.gz
 
 # Manage configs.
 ezterm config list
@@ -201,9 +219,11 @@ following directly in pi, Claude Code, or other SKILL.md-aware tools:
 ## HTTP API
 
 The daemon exposes a small JSON API (`/health`, `/api/sessions`,
-`/api/sessions/{id}/output`, `/api/configs`, …) plus the Web terminal
-page and WebSocket at `/web/{id}` and `/web/{id}/ws` (enabled by default for PTY
-sessions), and a config management page at `/config`. See [`API.md`](./API.md).
+`/api/sessions/{id}/output`, `/api/sessions/{id}/files`, `/api/configs`, …)
+plus the Web terminal page and WebSocket at `/web/{id}` and `/web/{id}/ws`
+(enabled by default for PTY sessions), and a config management page at
+`/config`. File transfer endpoints are loopback-only and stream raw bytes; see
+[`API.md`](./API.md).
 
 ## Project Structure & Conventions
 

@@ -22,7 +22,8 @@ body {
 
 .status {
   flex: 0 0 auto;
-  padding: 4px 10px;
+  /* Leave room for the Files button pinned to the top right. */
+  padding: 4px 84px 4px 10px;
   font-size: 12px;
   line-height: 18px;
   background: #1b2025;
@@ -182,4 +183,264 @@ body {
 .modal-button:focus-visible {
   outline: 2px solid #f0b35b;
   outline-offset: 2px;
+}
+/* File transfer panel ------------------------------------------------------ */
+
+.files-open {
+  position: fixed;
+  top: 3px;
+  right: 10px;
+  z-index: 10;
+  padding: 2px 10px;
+  border: 1px solid #33404a;
+  border-radius: 4px;
+  background: #1b2025;
+  color: #b4c0c9;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.files-open:hover {
+  border-color: #f0b35b;
+  color: #f0b35b;
+}
+
+.files-open[hidden] {
+  display: none;
+}
+
+.files-box {
+  display: flex;
+  flex-direction: column;
+  width: min(900px, 94vw);
+  max-height: 80vh;
+  padding: 16px 18px;
+}
+
+.files-pathbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+.files-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #8b9aa8;
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.files-chip {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid #33404a;
+  border-radius: 4px;
+  background: transparent;
+  color: #b4c0c9;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.files-chip:hover:not(:disabled) {
+  border-color: #f0b35b;
+  color: #f0b35b;
+}
+
+.files-chip:disabled {
+  color: #55636e;
+  cursor: not-allowed;
+}
+
+.files-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.files-newdir {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.files-newdir[hidden] {
+  display: none;
+}
+
+.files-newdir .password-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.files-list {
+  flex: 1 1 auto;
+  min-height: 180px;
+  max-height: 48vh;
+  overflow: auto;
+  border: 1px solid #262d34;
+  border-radius: 6px;
+  background: #111417;
+}
+
+.files-list.files-dragover {
+  outline: 2px dashed #f0b35b;
+  outline-offset: -3px;
+}
+
+.files-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 80px 150px 70px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid #1f262c;
+  font-size: 12px;
+}
+
+.files-row:last-child {
+  border-bottom: none;
+}
+
+.files-row:hover {
+  background: #1a2127;
+}
+
+.files-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #e7edf2;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.files-name:hover:not(:disabled) {
+  color: #f0b35b;
+}
+
+.files-name:disabled {
+  color: #6d7d8a;
+  cursor: not-allowed;
+}
+
+.files-badge {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #2a333b;
+  color: #8b9aa8;
+  font-size: 9px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.files-size,
+.files-time {
+  color: #8b9aa8;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.files-size {
+  text-align: right;
+}
+
+.files-delete {
+  padding: 2px 8px;
+  border: 1px solid #33404a;
+  border-radius: 4px;
+  background: transparent;
+  color: #b4c0c9;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.files-delete:hover {
+  border-color: #ff8b7d;
+  color: #ff8b7d;
+}
+
+.files-empty {
+  margin: 0;
+  padding: 26px 12px;
+  color: #6d7d8a;
+  font-size: 12px;
+  text-align: center;
+}
+
+.files-progress {
+  margin-top: 10px;
+}
+
+.files-progress[hidden] {
+  display: none;
+}
+
+.files-progress-bar {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #262d34;
+}
+
+.files-progress-bar span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: #f0b35b;
+  transition: width .12s linear;
+}
+
+.files-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  color: #8b9aa8;
+  font-size: 11px;
+}
+
+.files-error {
+  margin: 10px 0 0;
+  color: #ff8b7d;
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.files-error[hidden] {
+  display: none;
+}
+
+.files-box .modal-actions {
+  margin-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .files-row {
+    grid-template-columns: minmax(0, 1fr) 60px 62px;
+  }
+
+  .files-time {
+    display: none;
+  }
+
+  .files-box {
+    padding: 14px;
+  }
 }

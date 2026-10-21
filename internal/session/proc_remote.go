@@ -4,6 +4,7 @@ import (
 	"io"
 	"time"
 
+	"ezterm/internal/files"
 	"ezterm/internal/sshclient"
 )
 
@@ -39,4 +40,9 @@ func (r *remoteProc) Resize(rows, cols int) error {
 
 func (r *remoteProc) PID() int {
 	return 0 // remote PID is not exposed
+}
+
+// SFTP exposes the session's file transfer backend.
+func (r *remoteProc) SFTP() (files.Backend, error) {
+	return r.rs.SFTP()
 }

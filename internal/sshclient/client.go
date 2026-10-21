@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"ezterm/internal/files"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -30,6 +31,9 @@ type RemoteSession interface {
 	Stdin() io.Writer
 	Resize(rows, cols int) error
 	Terminate()
+	// SFTP opens (once) an sftp subsystem channel on this session's SSH
+	// connection, so file transfer reuses the established credentials.
+	SFTP() (files.Backend, error)
 }
 
 // remoteSession is a live SSH command channel with bridged streams.
@@ -40,6 +44,10 @@ type remoteSession struct {
 	copyWG   sync.WaitGroup
 	done     chan struct{}
 	exitCode int
+
+	// filesMu guards the lazily opened SFTP channel and its teardown.
+	filesMu sync.Mutex
+	files   *files.SFTP
 }
 
 // NewClientConfig builds an ssh.ClientConfig from the supplied options.
@@ -180,6 +188,14 @@ func Start(opts Options, command string, args []string, usePTY bool, rows, cols 
 		case <-copyDone:
 		case <-time.After(500 * time.Millisecond):
 		}
+		// Close the SFTP channel before the SSH connection so an in-flight
+		// transfer fails promptly instead of waiting for the transport.
+		rs.filesMu.Lock()
+		if rs.files != nil {
+			_ = rs.files.Close()
+			rs.files = nil
+		}
+		rs.filesMu.Unlock()
 		_ = rs.session.Close()
 		_ = rs.client.Close()
 	}()
@@ -204,6 +220,27 @@ func buildRemoteCommand(command string, args []string, usePTY bool) string {
 
 func quoteArg(arg string) string {
 	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
+}
+
+// SFTP returns the session's file transfer backend, opening the sftp
+// subsystem lazily and caching it for the life of the SSH connection.
+func (r *remoteSession) SFTP() (files.Backend, error) {
+	r.filesMu.Lock()
+	defer r.filesMu.Unlock()
+	select {
+	case <-r.done:
+		return nil, fmt.Errorf("sshclient: session has ended")
+	default:
+	}
+	if r.files != nil {
+		return r.files, nil
+	}
+	backend, err := files.OpenSFTP(r.client)
+	if err != nil {
+		return nil, err
+	}
+	r.files = backend
+	return backend, nil
 }
 
 // Wait returns a channel closed when the remote command exits.

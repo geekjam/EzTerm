@@ -12,6 +12,7 @@
 </head>
 <body>
   <div id="status" class="status">connecting...</div>
+  <button id="files-open" class="files-open" type="button" hidden>Files</button>
   <div id="terminal"></div>
   <div id="modal" class="modal" hidden>
     <div class="modal-box" role="alertdialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-message">
@@ -28,6 +29,39 @@
         <button id="modal-cancel" class="modal-button modal-button-quiet" type="button" hidden>Cancel</button>
         <button id="modal-confirm" class="modal-button" type="button">OK</button>
         <button id="modal-send" class="modal-button" type="submit" form="password-form" hidden>Send</button>
+      </div>
+    </div>
+  </div>
+  <div id="files-modal" class="modal" hidden>
+    <div class="modal-box files-box" role="dialog" aria-modal="true" aria-labelledby="files-title">
+      <h1 id="files-title" class="modal-title">Files</h1>
+      <div class="files-pathbar">
+        <button id="files-home" class="files-chip" type="button">Home</button>
+        <button id="files-up" class="files-chip" type="button">Up</button>
+        <span id="files-path" class="files-path"></span>
+      </div>
+      <div class="files-actions">
+        <button id="files-upload" class="modal-button" type="button">Upload</button>
+        <button id="files-newdir" class="modal-button modal-button-quiet" type="button">New folder</button>
+        <input id="files-input" type="file" multiple hidden>
+      </div>
+      <div id="files-newdir-form" class="files-newdir" hidden>
+        <input id="files-newdir-name" class="password-input" type="text" placeholder="folder name"
+               autocomplete="off" spellcheck="false">
+        <button id="files-newdir-create" class="modal-button" type="button">Create</button>
+        <button id="files-newdir-cancel" class="modal-button modal-button-quiet" type="button">Cancel</button>
+      </div>
+      <div id="files-list" class="files-list" role="list"></div>
+      <div id="files-progress" class="files-progress" hidden>
+        <div class="files-progress-bar"><span id="files-progress-fill"></span></div>
+        <div class="files-progress-row">
+          <span id="files-progress-text"></span>
+          <button id="files-progress-cancel" class="modal-button modal-button-quiet" type="button">Cancel</button>
+        </div>
+      </div>
+      <p id="files-error" class="files-error" role="alert" hidden></p>
+      <div class="modal-actions">
+        <button id="files-close" class="modal-button modal-button-quiet" type="button">Close</button>
       </div>
     </div>
   </div>

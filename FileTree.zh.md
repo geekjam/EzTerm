@@ -25,7 +25,8 @@
 ├── internal/                     # 私有实现包（不可被外部导入）
 ├── scripts/
 │   ├── e2e.sh                    # 端到端验收（Bash/Unix + Git Bash）
-│   └── e2e.ps1                   # 端到端验收（PowerShell/Windows）
+│   ├── e2e.ps1                   # 端到端验收（PowerShell/Windows）
+│   └── web_smoke.js              # Files 面板的无头浏览器冒烟测试（CDP）
 └── testdata/                     # 测试夹具
 ```
 
@@ -55,6 +56,7 @@ internal/
 │   ├── env.go                    # ~/.ezterm 与 ~ 展开
 │   ├── config_cmd.go             # config local/ssh/list/delete 本地管理
 │   ├── config_web.go             # config web：确保 daemon 并打印/打开配置页
+│   ├── files_cmd.go              # files ls/upload/download/rm/mkdir + TTY 进度
 │   ├── open_linux.go             # Linux 默认浏览器启动
 │   ├── open_unix.go              # macOS/BSD 默认浏览器启动
 │   └── open_windows.go           # Windows 默认浏览器启动
@@ -65,8 +67,15 @@ internal/
 ├── daemon/
 │   ├── daemon.go                 # HTTP 服务器、flag、优雅关闭
 │   ├── handlers.go               # REST/JSON handler、配置 CRUD、attach 流
+│   ├── files.go                  # 文件传输 handler：列表/上传/下载/mkdir/删除，loopback+Origin 校验
 │   ├── web.go                    # 内嵌 Web 终端/配置页面 + WebSocket 桥接
 │   └── web/                      # xterm.js 终端 + 断开弹窗 + 深色配置页资源（go:embed）
+├── files/
+│   ├── backend.go                # 两个文件后端共享的 Backend 接口
+│   ├── path.go                   # ~ 展开 + POSIX/原生路径解析
+│   ├── local.go                  # os 后端：home 根、跟随符号链接、屏蔽数据目录、原子上传
+│   ├── sftp.go                   # 复用会话 SSH 连接的 SFTP 后端（不跟随符号链接）
+│   └── errors.go                 # 哨兵错误 + os/SFTP 状态码映射
 ├── message/
 │   └── message.go                # 每会话消息索引 + 内容文件持久化
 ├── prompt/
@@ -88,12 +97,15 @@ internal/
 ```
 
 模块内按职责分包，无循环依赖：`cli` → `daemon`/`configstore`/`sshconfig`；
-`daemon` → `session`/`configstore`/`message`/`storage`；
-`session` → `buffer`/`ansi`/`message`/`storage`/`sshclient`/`configstore`/`prompt`。
+`daemon` → `session`/`files`/`configstore`/`message`/`storage`；
+`session` → `buffer`/`ansi`/`files`/`message`/`storage`/`sshclient`/`configstore`/`prompt`；
+`sshclient` → `files`。
 
 attach 流程：CLI `attach` 命令打开 `GET /api/sessions/{id}/attach`（daemon 流式推送原始 PTY 字节流，先重放保留画面），按键通过 `POST /api/sessions/{id}/input`（`press_enter=false`）转发，窗口尺寸变化通过 `POST /api/sessions/{id}/resize` 同步；`Ctrl+]` 本地脱离而不终止会话。
 
 Web 终端复用同一套 attach 原语（输出用 `AttachReader`/`ReadOutput`，输入用 `SendInput`/`Resize`），经 `/web/{id}/ws` 的 WebSocket 连接，因此浏览器标签页与 `attach` 客户端共享同一 PTY 画面。PTY 会话默认开启（`start` 会打印 URL，`--noweb` / `web: false` 可关闭），pipe 模式永不提供。进程退出时，daemon 在正常关闭前发送 `{"type":"session-end"}` 文本帧，页面据此弹出「Session disconnected」；传输层断开则弹出「Connection lost」并在后台自动重连。
+
+文件传输位于 `internal/files`：一个 `Backend` 接口两个实现 —— `Local`（daemon 所在机器的 `os` 调用，根为用户 home，跟随符号链接，拒绝数据目录）与 `SFTP`（在会话已有的 `*ssh.Client` 上惰性打开 `sftp` 子系统，永不跟随符号链接）。`Session.Files()` 统一强制两者共同的前提：会话必须处于 `running`；daemon 对每个文件端点还要求 loopback 来源与同源 `Origin`。上传在目标目录写 `.ezterm-upload-*.part` 临时文件后用原子重命名发布，并保留原文件权限；下载以 `application/octet-stream` 附件流式返回。传输过程不写入消息日志。
 
 密码提示同样走这条 WebSocket。password 认证但未存密码的 SSH 配置会以 `awaiting_password` 状态创建而不拨号；`Session.pending_prompt` 携带提示内容，来自 loopback 的 `secret` 文本帧提供密码。开启页面且为 PTY 的会话，其输出会由 `internal/prompt` 扫描（规则表锚定最后一行行尾）；命中则发布 `terminal_password` 提示，提交的密码直写 PTY。密码不写日志、不存为消息、不回显到 socket。
 

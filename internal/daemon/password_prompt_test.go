@@ -22,6 +22,7 @@ import (
 	"ezterm/internal/sshconfig"
 	"ezterm/internal/storage"
 	"github.com/coder/websocket"
+	pkgsftp "github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -424,6 +425,14 @@ func TestPromptChanged(t *testing.T) {
 // path can be tested without a real host.
 func startSSHServer(t *testing.T, password string) int {
 	t.Helper()
+	return startSSHServerWithSFTP(t, password, "")
+}
+
+// startSSHServerWithSFTP additionally serves the sftp subsystem for file
+// transfer tests. An empty root disables the subsystem, matching the minimal
+// server used by the password tests.
+func startSSHServerWithSFTP(t *testing.T, password, sftpRoot string) int {
+	t.Helper()
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -453,13 +462,13 @@ func startSSHServer(t *testing.T, password string) int {
 			if err != nil {
 				return
 			}
-			go serveSSHConn(conn, cfg)
+			go serveSSHConn(conn, cfg, sftpRoot)
 		}
 	}()
 	return ln.Addr().(*net.TCPAddr).Port
 }
 
-func serveSSHConn(nc net.Conn, cfg *ssh.ServerConfig) {
+func serveSSHConn(nc net.Conn, cfg *ssh.ServerConfig, sftpRoot string) {
 	conn, chans, reqs, err := ssh.NewServerConn(nc, cfg)
 	if err != nil {
 		_ = nc.Close()
@@ -476,11 +485,11 @@ func serveSSHConn(nc net.Conn, cfg *ssh.ServerConfig) {
 		if err != nil {
 			continue
 		}
-		go serveSSHSession(ch, requests)
+		go serveSSHSession(ch, requests, sftpRoot)
 	}
 }
 
-func serveSSHSession(ch ssh.Channel, requests <-chan *ssh.Request) {
+func serveSSHSession(ch ssh.Channel, requests <-chan *ssh.Request, sftpRoot string) {
 	defer ch.Close()
 	started := false
 	for req := range requests {
@@ -497,6 +506,20 @@ func serveSSHSession(ch ssh.Channel, requests <-chan *ssh.Request) {
 				_, _ = io.WriteString(ch, "remote-ready\r\n")
 				_, _ = io.Copy(ch, ch) // echo input so the test observes the stream
 			}()
+		case "subsystem":
+			var payload struct{ Name string }
+			if sftpRoot == "" || ssh.Unmarshal(req.Payload, &payload) != nil || payload.Name != "sftp" {
+				_ = req.Reply(false, nil)
+				continue
+			}
+			_ = req.Reply(true, nil)
+			server, err := pkgsftp.NewServer(ch, pkgsftp.WithServerWorkingDirectory(sftpRoot))
+			if err != nil {
+				return
+			}
+			_ = server.Serve()
+			_ = server.Close()
+			return
 		default:
 			_ = req.Reply(false, nil)
 		}

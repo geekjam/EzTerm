@@ -94,10 +94,15 @@ docs: add HTTP API reference
 - 向后兼容：删除或重命名端点/CLI flag 属于破坏性变更，需配合版本号。
 - **WebSocket 帧：** 二进制帧承载原始终端字节；文本帧承载 JSON 控制消息。完整清单：浏览器 → 服务器的 `{"type":"resize",…}`、`{"type":"secret",…}`；服务器 → 客户端的 `{"type":"prompt",…}`、`{"type":"prompt-cleared"}`、`{"type":"secret-result",…}`、`{"type":"session-end"}`。新增控制消息必须写入 `API.md`。
 - **密码处理（`secret` 帧）：** 提交的密码仅接受 loopback 来源，并直接写入 SSH 拨号或 PTY。daemon 自身不记录它：不写 input 消息、不写 `slog`、不进 HTTP 响应、不进 `sessions.json`，也不会由 daemon 生成回显帧。（若程序本身回显输入，密码仍可能出现在终端流中；密码提示通常会关闭回显。）不得新增携带密码的 CLI 或 HTTP 通道，也不得从进程参数或环境变量读取密码。终端提示识别位于 `internal/prompt`，必须保持为纯逻辑、可测试的包（规则表 + 尾部检测器，无 I/O）。
+- **文件传输：** 5 个文件端点记录在 `API.md`，逻辑集中在 `internal/files`（一个 `Backend` 接口，本地 `os` 实现与会话 SSH 连接上的 SFTP 实现）。仅 `running` 会话可用，且只接受 loopback 来源；浏览器 `Origin` 必须与请求 Host 一致。上传只接受 `application/octet-stream`，先写目标目录中的临时文件再原子重命名。本地后端跟随符号链接，SSH 后端永不跟随。daemon 数据目录返回 `403` 并在列表中隐藏。不得把文件内容或传输路径写入 `messages`、`slog` 或 `sessions.json`。
 - **Web UI 文案使用英文**，与 CLI 输出和 API 文档一致；内嵌页面无构建步骤，保持依赖精简。
 - **安全：** 绝不提交凭据、密钥或私密材料。SSH profile 可包含用户 `~/.ezterm` 数据目录中的密码/密钥，但绝不能进入仓库或 profile 骨架。编写文档或示例时优先使用「不存密码」的 profile（由 Web 终端在每次启动时询问）。
+
+---
 
 ## 6. 依赖
 
 - WebSocket 支持使用 `github.com/coder/websocket`（支持 context 取消，无传递依赖）。
+- SSH 文件传输使用 `github.com/pkg/sftp`；SFTP 客户端复用会话已有的 `*ssh.Client`，该依赖仅出现在 `internal/files`。远端需提供 `sftp` 子系统。
+- `golang.org/x/crypto` 提供 SSH，`golang.org/x/term` 提供终端状态，`golang.org/x/sys` 提供平台调用，`creack/pty` / `charmbracelet/x/conpty` 提供 PTY 实现。
 - Web 终端页面由 `internal/daemon/web/` 下的 `go:embed` 资源提供；无前端构建步骤。xterm.js 在运行时通过 CDN 加载，不纳入仓库。

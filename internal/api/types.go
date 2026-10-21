@@ -191,3 +191,36 @@ type ConfigUpsertRequest struct {
 	Shell          string   `json:"shell,omitempty"`
 	PasswordPrompt bool     `json:"password_prompt,omitempty"`
 }
+
+// FileEntry describes one remote or local directory entry returned by the file
+// transfer endpoints. Path is the absolute, tilde-expanded path built from the
+// directory that was listed, not a symlink-resolved path.
+type FileEntry struct {
+	Name     string    `json:"name"`
+	Path     string    `json:"path"`
+	Dir      bool      `json:"dir"`
+	Symlink  bool      `json:"symlink"`
+	Size     int64     `json:"size"`
+	Mode     string    `json:"mode"` // permission bits, e.g. "0644"
+	Modified time.Time `json:"modified"`
+}
+
+// FileListResponse is the result of GET /api/sessions/{id}/files. Parent is
+// empty at a filesystem root; Root is the session's transfer root (the local
+// user's home or the SSH login directory).
+type FileListResponse struct {
+	Path    string      `json:"path"`
+	Parent  string      `json:"parent,omitempty"`
+	Root    string      `json:"root"`
+	Entries []FileEntry `json:"entries"`
+}
+
+// FileResponse wraps the entry affected by an upload or mkdir request.
+type FileResponse struct {
+	File FileEntry `json:"file"`
+}
+
+// MkdirRequest is the request body of POST /api/sessions/{id}/files.
+type MkdirRequest struct {
+	Path string `json:"path"`
+}

@@ -74,6 +74,11 @@ func (m *Manager) Restore() error {
 
 // Create starts and registers a new session.
 func (m *Manager) Create(cfg Config) (*Session, error) {
+	// The daemon data directory holds stored SSH passwords and transcripts;
+	// the local file backend must never expose it.
+	if m.store != nil && m.store.DataDir() != "" {
+		cfg.FileDenyRoots = append(cfg.FileDenyRoots, m.store.DataDir())
+	}
 	s, err := New(cfg, m.msgMgr, m.cfgStore)
 	if err != nil {
 		return nil, err
