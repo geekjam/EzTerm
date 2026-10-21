@@ -188,9 +188,10 @@ platform (console programs on Windows may ignore it) — fall back to `terminate
   credentials. Use the API (`GET /api/configs`, `GET /api/sessions`, `output`)
   instead, and redact anything credential-looking.
 - **Password prompts** — `status:"awaiting_password"` or a `pending_prompt`
-  means only the human can supply the secret. Tell the user to open
-  `Session.web_url` and type it there. Never ask for the password in chat and
-  never send it via `input` or `/api/configs`. Then poll
+  means only the human can supply the secret: open `Session.web_url` in the
+  browser yourself (`start "" <url>` on Windows, `open`/`xdg-open` elsewhere)
+  and ask the user to type it in the page. Never ask for the password in chat
+  and never send it via `input` or `/api/configs`. Then poll
   `GET /api/sessions/{id}` until `running`, `exited`, or `terminated` (300 s).
 - **Entering credentials** — prefer a config that stores **no** password
   (`auth_method:"password"` with no `password`, i.e. `password_prompt: true`):
